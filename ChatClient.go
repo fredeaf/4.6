@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-var MessagesLock sync.RWMutex    //En mutex, der bruges til at håndtere MessagesSent
-var MessagesSent map[string]bool //Et map, der indeholder en boolsk værdi for alle beskeder
 var dns = MakeDNS()
+var ledger = MakeLedger()
+var tClock clock
 
 //DNS : structure containing connections
 type DNS struct {
@@ -46,25 +46,48 @@ func (dns *DNS) RemoveConnection(connection net.Conn) {
 	}
 }
 
-func broadcast(outbound chan string) {
-	for {
-		msg := <-outbound //Læs ny besked
-		MessagesLock.RLock()
-		if MessagesSent[msg] == false {
-			MessagesLock.RUnlock()
-			//Beskeden er ikke tidligere sendt
-			MessagesLock.Lock()
-			dns.lock.Lock()
-			for _, x := range dns.m {
-				x.Write([]byte(msg)) //Beskeden sendes
-			}
-			dns.lock.Unlock()
-			MessagesSent[msg] = true //Beskeden tilføjes til mængden af sendte beskeder
-			fmt.Println(msg)         //printer en besked ud
-			MessagesLock.Unlock()
-		} else {
-			MessagesLock.RUnlock()
+//clock : structure counting received transactions
+type clock struct {
+	m    map[string]int
+	lock sync.Mutex
+}
+
+//MakeClock : clock initiator
+func MakeClock(dns DNS) *clock {
+	clock := new(clock)
+	clock.m = make(map[string]int)
+	tClock.lock.Lock()
+	defer tClock.lock.Unlock()
+	dns.lock.Lock()
+	defer dns.lock.Unlock()
+	for _, con := range dns.m {
+		clock.m[con.RemoteAddr().String()] = 0
+	}
+	return clock
+}
+
+func setClock(id string, num int) {
+	tClock.lock.Lock()
+	defer tClock.lock.Unlock()
+	tClock.m[id] = num //TODO add logic
+}
+func checkClock(id string) bool {
+	tClock.lock.Lock()
+	defer tClock.lock.Unlock()
+	return true //TODO add logic
+}
+
+func broadcast(transaction Transaction) {
+	ledger.lock.Lock()
+	defer ledger.lock.Unlock()
+	if checkClock(transaction.ID) { //checks for updated
+		dns.lock.Lock()
+		defer dns.lock.Unlock()
+		for _, x := range dns.m {
+			x.Write((transaction)) //new transaction is propagated
 		}
+		fmt.Println(ledger) //Updated ledger is printed
+	} else {
 	}
 }
 
@@ -102,7 +125,12 @@ func turnIntoAServer(outbound chan string) {
 	}
 }
 
-func takeInputFromUser(outbound chan string) {
+func createTransaction(todo string) Transaction { //TODO translate incoming/outgoing stuff
+	transaction := Transaction{"", "", "", 2}
+	return transaction
+}
+
+func takeInputFromUser() {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("> ")
@@ -113,12 +141,11 @@ func takeInputFromUser(outbound chan string) {
 		if text == "quit\n" {
 			return
 		}
-		outbound <- text
+		go broadcast(createTransaction(text)) //TODO handle incoming stuff
 	}
 }
 
 func main() {
-	MessagesSent = make(map[string]bool)
 	outbound := make(chan string)          //channel til ting der skal ud/ind
 	var reader = bufio.NewReader(os.Stdin) //ny reader, der læser fra terminalen
 	fmt.Println("Please input an IP adress with a port number")
@@ -128,17 +155,18 @@ func main() {
 	}
 	adress = strings.Replace(adress, "\n", "", -1)           //retter adressen til
 	conn, _ := net.DialTimeout("tcp", adress, 5*time.Second) //opretter forbindelse til adressen
-	go broadcast(outbound)
 	if conn != nil {
 		//adressen eksisterer
 		defer conn.Close()
 		dns.AddConnection(conn)
 		go handleConnection(outbound, conn)
 		go turnIntoAServer(outbound)
-		takeInputFromUser(outbound)
+		takeInputFromUser()
+		tClock = MakeClock(dns)
 	} else {
 		//adressen eksisterer ikke
 		go turnIntoAServer(outbound)
-		takeInputFromUser(outbound)
+		takeInputFromUser()
+		tClock = MakeClock(dns)
 	}
 }
