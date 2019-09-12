@@ -9,13 +9,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
 var dns = MakeDNS()
 var ledger = MakeLedger()
-var tClock *clock
+var tClock *Clock
 var packagesSent int
 var myID string
 
@@ -34,90 +33,16 @@ func packTransaction(transaction *Transaction) Package {
 	}
 }
 
-//DNS : structure containing connections
-type DNS struct {
-	m    map[int]net.Conn
-	lock sync.Mutex
-}
-
-//MakeDNS : dns initiator
-func MakeDNS() *DNS {
-	dns := new(DNS)
-	dns.m = make(map[int]net.Conn)
-	return dns
-}
-
-//AddConnection : adds a connection to dns
-func (dns *DNS) AddConnection(connection net.Conn) {
-	dns.lock.Lock()
-	defer dns.lock.Unlock()
-	dns.m[len(dns.m)] = connection
-}
-
-//RemoveConnection : Removes a connection from dns
-func (dns *DNS) RemoveConnection(connection net.Conn) {
-	dns.lock.Lock()
-	defer dns.lock.Unlock()
-	for k, x := range dns.m {
-		if x == connection {
-			delete(dns.m, k)
-		}
-	}
-}
-
-//clock : structure counting received transactions
-type clock struct {
-	m    map[string][]int
-	lock sync.Mutex
-}
-
-//MakeClock : clock initiator
-func MakeClock() *clock {
-	clock := new(clock)
-	clock.m = make(map[string][]int)
-	return clock
-}
-
-//setClock : increments clock
-func setClock(id string, packageNumber int) {
-	tClock.m[id] = append(tClock.m[id], packageNumber)
-}
-
-//checkClock : Checks if a packageNumber has been received from an myID before
-func checkClock(id string, packageNumber int) bool {
-	if contains(tClock.m[id], packageNumber) { //Checks if packageNumber was seen
-		return true
-	} else {
-		return false
-	}
-}
-
-//logic for checkClock
-func contains(c []int, n int) bool {
-	for _, x := range c {
-		if x == n {
-			return true
-		}
-	}
-	return false
-}
-
-//createTransaction : creates a transaction
-func createTransaction(from string, to string, amount int) *Transaction {
-	transaction := new(Transaction)
-	transaction.ID = myID
-	transaction.Amount = amount
-	transaction.From = from
-	transaction.To = to
-	return transaction
-}
-
 func broadcast(pack Package) {
 	dns.lock.Lock()
 	defer dns.lock.Unlock()
 	for _, x := range dns.m {
 		encoder := gob.NewEncoder(x)
-		encoder.Encode(pack) //new transaction is propagated
+		err := encoder.Encode(pack) //new transaction is propagated
+		if err != nil {
+			fmt.Println("Error broadcasting to: " + x.RemoteAddr().String())
+			fmt.Println(err)
+		}
 	}
 	fmt.Println(ledger) //Updated ledger is printed
 
@@ -190,7 +115,7 @@ func takeInputFromUser() {
 					if err != nil {
 						fmt.Println("Error! try again")
 					} else {
-						transaction := createTransaction(from, to, amount)
+						transaction := createTransaction(myID, from, to, amount)
 						newPackage := packTransaction(transaction)
 						go broadcast(newPackage)
 					}
