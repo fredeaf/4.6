@@ -15,6 +15,22 @@ import (
 var dns = MakeDNS()
 var ledger = MakeLedger()
 var tClock *clock
+var packagesSent int
+
+//Package : a container for Transactions with a counter
+type Package struct {
+	number      int
+	transaction *Transaction
+}
+
+//packTransaction : packages Transactions with a package id
+func packTransaction(transaction *Transaction) Package {
+	packagesSent++
+	return Package{
+		number:      packagesSent,
+		transaction: transaction,
+	}
+}
 
 //DNS : structure containing connections
 type DNS struct {
@@ -49,64 +65,67 @@ func (dns *DNS) RemoveConnection(connection net.Conn) {
 
 //clock : structure counting received transactions
 type clock struct {
-	m    map[string]int
+	m    map[string][]int
 	lock sync.Mutex
 }
 
 //MakeClock : clock initiator
-func MakeClock(dns *DNS) *clock {
+func MakeClock() *clock {
 	clock := new(clock)
-	clock.m = make(map[string]int)
-	tClock.lock.Lock()
-	defer tClock.lock.Unlock()
-	dns.lock.Lock()
-	defer dns.lock.Unlock()
-	for _, con := range dns.m {
-		clock.m[con.RemoteAddr().String()] = 0
-	}
+	clock.m = make(map[string][]int)
 	return clock
 }
 
-func setClock(id string, num int) {
-	tClock.lock.Lock()
-	defer tClock.lock.Unlock()
-	tClock.m[id] = num //TODO add logic
-}
-func checkClock(id string) bool {
-	tClock.lock.Lock()
-	defer tClock.lock.Unlock()
-	return true //TODO add logic
+//setClock : increments clock
+func setClock(id string, packageNumber int) {
+	tClock.m[id] = append(tClock.m[id], packageNumber)
 }
 
-func createTransaction(from string, to string, amount int) Transaction {
-	return Transaction{
-		ID:     "", //TODO create ID format/creation
-		From:   from,
-		To:     to,
-		Amount: amount,
-	}
-}
-
-func broadcast(transaction Transaction) {
-	ledger.lock.Lock()
-	defer ledger.lock.Unlock()
-	if checkClock(transaction.ID) { //checks if transaction is new
-		dns.lock.Lock()
-		defer dns.lock.Unlock()
-		for _, x := range dns.m {
-			encoder := gob.NewEncoder(x)
-			encoder.Encode(transaction) //new transaction is propagated
-		}
-		fmt.Println(ledger) //Updated ledger is printed
+//checkClock : Checks if a packageNumber has been received from an id before
+func checkClock(id string, packageNumber int) bool {
+	if contains(tClock.m[id], packageNumber) { //Checks if packageNumber was seen
+		return true
 	} else {
+		return false
 	}
+}
+
+//logic for checkClock
+func contains(c []int, n int) bool {
+	for _, x := range c {
+		if x == n {
+			return true
+		}
+	}
+	return false
+}
+
+//createTransaction : creates a transaction
+func createTransaction(from string, to string, amount int) *Transaction {
+	transaction := new(Transaction)
+	transaction.ID = "todo" //TODO create ID
+	transaction.Amount = amount
+	transaction.From = from
+	transaction.To = to
+	return transaction
+}
+
+func broadcast(pack Package) {
+	dns.lock.Lock()
+	defer dns.lock.Unlock()
+	for _, x := range dns.m {
+		encoder := gob.NewEncoder(x)
+		encoder.Encode(pack) //new transaction is propagated
+	}
+	fmt.Println(ledger) //Updated ledger is printed
+
 }
 
 func handleConnection(conn net.Conn) {
 	defer dns.RemoveConnection(conn)
 	defer conn.Close()
 	decoder := gob.NewDecoder(conn)
-	var incoming Transaction
+	var incoming Package
 	for {
 		otherEnd := conn.RemoteAddr().String() //Find address of connection
 		for {
@@ -115,7 +134,13 @@ func handleConnection(conn net.Conn) {
 				fmt.Println("Ending session with " + otherEnd)
 				return
 			}
-			broadcast(incoming) //Data is translated to transaction and sent on
+			tClock.lock.Lock()
+			defer tClock.lock.Unlock()
+			if checkClock(incoming.transaction.ID, incoming.number) { //checks if transaction is new
+				setClock(incoming.transaction.ID, incoming.number)
+				ledger.Transaction(incoming.transaction)
+				broadcast(incoming) //Package is sent onward
+			}
 		}
 	}
 }
@@ -141,26 +166,56 @@ func turnIntoAServer() {
 func takeInputFromUser() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Println("Please input sender:")
-		from, err := reader.ReadString('\n')
-		fmt.Println("Please input receiver:")
-		to, err := reader.ReadString('\n')
-		fmt.Println("Please input amount:")
-		amountString, err := reader.ReadString('\n')
-		from = strings.Replace(from, "\n", "", -1)
-		to = strings.Replace(to, "\n", "", -1)
-		amountString = strings.Replace(amountString, "\n", "", -1)
-		amount, err := strconv.Atoi(amountString)
+		fmt.Println("Please choose an action: ")
+		fmt.Println("Enter 1 to show ledger")
+		fmt.Println("Enter 2 to input a transaction")
+		ress, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Println("Error! try again")
+			fmt.Println("Input error, try again")
 		} else {
-			transaction := createTransaction(from, to, amount)
-			go broadcast(transaction)
+			switch ress {
+			case "1\n":
+				{
+					fmt.Println("Please input sender:")
+					from, err := reader.ReadString('\n')
+					fmt.Println("Please input receiver:")
+					to, err := reader.ReadString('\n')
+					fmt.Println("Please input amount:")
+					amountString, err := reader.ReadString('\n')
+					from = strings.Replace(from, "\n", "", -1)
+					to = strings.Replace(to, "\n", "", -1)
+					amountString = strings.Replace(amountString, "\n", "", -1)
+					amount, err := strconv.Atoi(amountString)
+					if err != nil {
+						fmt.Println("Error! try again")
+					} else {
+						transaction := createTransaction(from, to, amount)
+						newPackage := packTransaction(transaction)
+						go broadcast(newPackage)
+					}
+				}
+			case "2\n":
+				{
+					fmt.Println("Current Ledger:")
+					ledger.lock.Lock()
+					defer ledger.lock.Unlock()
+					for name, amount := range ledger.Accounts {
+						fmt.Println(name + ": " + strconv.Itoa(amount))
+					}
+				}
+
+			default:
+				fmt.Println("invalid input")
+			}
 		}
+
 	}
 }
 
 func main() {
+	packagesSent = 0
+	tClock = MakeClock()
+
 	var reader = bufio.NewReader(os.Stdin) //Create reader to get user input
 	fmt.Println("Please input an IP address and port number of known network")
 	address, err := reader.ReadString('\n') //Reads input
@@ -171,16 +226,13 @@ func main() {
 	conn, _ := net.DialTimeout("tcp", address, 5*time.Second) //Attempts connection to given address
 	if conn != nil {
 		//address responds
-		defer conn.Close()
 		dns.AddConnection(conn)
 		go handleConnection(conn)
 		go turnIntoAServer()
 		takeInputFromUser()
-		tClock = MakeClock(dns)
 	} else {
 		//address not responding
 		go turnIntoAServer()
 		takeInputFromUser()
-		tClock = MakeClock(dns)
 	}
 }
