@@ -18,21 +18,6 @@ var tClock *Clock
 var packagesSent int
 var myID string
 
-//Package : a container for Transactions with a counter
-type Package struct {
-	number      int
-	transaction *Transaction
-}
-
-//packTransaction : packages Transactions with a package myID
-func packTransaction(transaction *Transaction) Package {
-	packagesSent++
-	return Package{
-		number:      packagesSent,
-		transaction: transaction,
-	}
-}
-
 func broadcast(pack Package) {
 	dns.lock.Lock()
 	defer dns.lock.Unlock()
@@ -45,7 +30,6 @@ func broadcast(pack Package) {
 		}
 	}
 	fmt.Println(ledger) //Updated ledger is printed
-
 }
 
 func handleConnection(conn net.Conn) {
