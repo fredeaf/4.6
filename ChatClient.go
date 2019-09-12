@@ -2,6 +2,7 @@ package __6
 
 import (
 	"bufio"
+	"encoding/gob"
 	"fmt"
 	"net"
 	"os"
@@ -13,7 +14,7 @@ import (
 
 var dns = MakeDNS()
 var ledger = MakeLedger()
-var tClock clock
+var tClock *clock
 
 //DNS : structure containing connections
 type DNS struct {
@@ -53,7 +54,7 @@ type clock struct {
 }
 
 //MakeClock : clock initiator
-func MakeClock(dns DNS) *clock {
+func MakeClock(dns *DNS) *clock {
 	clock := new(clock)
 	clock.m = make(map[string]int)
 	tClock.lock.Lock()
@@ -80,92 +81,88 @@ func checkClock(id string) bool {
 func broadcast(transaction Transaction) {
 	ledger.lock.Lock()
 	defer ledger.lock.Unlock()
-	if checkClock(transaction.ID) { //checks for updated
+	if checkClock(transaction.ID) { //checks if transaction is new
 		dns.lock.Lock()
 		defer dns.lock.Unlock()
 		for _, x := range dns.m {
-			x.Write((transaction)) //new transaction is propagated
+			encoder := gob.NewEncoder(x)
+			encoder.Encode(transaction) //new transaction is propagated
 		}
 		fmt.Println(ledger) //Updated ledger is printed
 	} else {
 	}
 }
 
-func handleConnection(outbound chan string, conn net.Conn) {
+func handleConnection(conn net.Conn) {
 	defer dns.RemoveConnection(conn)
 	defer conn.Close()
+	decoder := gob.NewDecoder(conn)
+	var incoming Transaction
 	for {
-		otherEnd := conn.RemoteAddr().String()
+		otherEnd := conn.RemoteAddr().String() //Find address of connection
 		for {
-			msg, err := bufio.NewReader(conn).ReadString('\n')
+			err := decoder.Decode(&incoming)
 			if err != nil {
 				fmt.Println("Ending session with " + otherEnd)
 				return
 			}
-			outbound <- msg
+			broadcast(incoming) //data is translated to transaction and sent on
 		}
 	}
 }
 
-func turnIntoAServer(outbound chan string) {
-	name, _ := os.Hostname()         //Finder eget navn
-	addrs, _ := net.LookupHost(name) //Finder egen adresse
+func turnIntoAServer() {
+	name, _ := os.Hostname()         //Find own name
+	addrs, _ := net.LookupHost(name) //Find own address
 	for indx, addr := range addrs {
 		//Printer adresse
 		fmt.Println("Address number " + strconv.Itoa(indx) + ": " + addr)
 	}
-	ln, _ := net.Listen("tcp", "") //lytter efter forbindelse udefra
+	ln, _ := net.Listen("tcp", "") //Listen for incoming connections
 	defer ln.Close()
 	for {
-		_, port, _ := net.SplitHostPort(ln.Addr().String()) //Finder den port der lyttes på
+		_, port, _ := net.SplitHostPort(ln.Addr().String()) //Find port used for connection
 		fmt.Println("Listening on port " + port)
-		conn, _ := ln.Accept() //accepterer indgående TCP-connections
+		conn, _ := ln.Accept() //Accept incoming TCP-connections
 		dns.AddConnection(conn)
-		go handleConnection(outbound, conn)
+		go handleConnection(conn)
 	}
 }
 
-func createTransaction(todo string) Transaction { //TODO translate incoming/outgoing stuff
-	transaction := Transaction{"", "", "", 2}
-	return transaction
-}
-
 func takeInputFromUser() {
+	reader := bufio.NewReader(os.Stdin)
+	decoder := gob.NewDecoder(reader)
 	for {
-		reader := bufio.NewReader(os.Stdin)
+		var transaction Transaction
 		fmt.Print("> ")
-		text, err := reader.ReadString('\n')
+		err := decoder.Decode(&transaction)
 		if err != nil {
 			return
 		}
-		if text == "quit\n" {
-			return
-		}
-		go broadcast(createTransaction(text)) //TODO handle incoming stuff
+		go broadcast(transaction)
 	}
 }
 
 func main() {
-	outbound := make(chan string)          //channel til ting der skal ud/ind
-	var reader = bufio.NewReader(os.Stdin) //ny reader, der læser fra terminalen
-	fmt.Println("Please input an IP adress with a port number")
-	adress, err := reader.ReadString('\n') //finder den angivede adresse
+	var reader = bufio.NewReader(os.Stdin) //Create reader to get user input
+	fmt.Println("Please input an IP address and port number of known network")
+	address, err := reader.ReadString('\n') //Reads input
 	if err != nil {
 		return
 	}
-	adress = strings.Replace(adress, "\n", "", -1)           //retter adressen til
-	conn, _ := net.DialTimeout("tcp", adress, 5*time.Second) //opretter forbindelse til adressen
+	address = strings.Replace(address, "\n", "", -1)          //Trimming address
+	conn, _ := net.DialTimeout("tcp", address, 5*time.Second) //Attempts connection to given address
 	if conn != nil {
-		//adressen eksisterer
+		//address responds
 		defer conn.Close()
 		dns.AddConnection(conn)
-		go handleConnection(outbound, conn)
-		go turnIntoAServer(outbound)
+		go handleConnection(conn)
+		go turnIntoAServer()
 		takeInputFromUser()
 		tClock = MakeClock(dns)
 	} else {
-		//adressen eksisterer ikke
-		go turnIntoAServer(outbound)
+		//address not responding
+		go turnIntoAServer()
 		takeInputFromUser()
 		tClock = MakeClock(dns)
 	}
