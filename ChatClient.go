@@ -78,6 +78,15 @@ func checkClock(id string) bool {
 	return true //TODO add logic
 }
 
+func createTransaction(from string, to string, amount int) Transaction {
+	return Transaction{
+		ID:     "", //TODO create ID format/creation
+		From:   from,
+		To:     to,
+		Amount: amount,
+	}
+}
+
 func broadcast(transaction Transaction) {
 	ledger.lock.Lock()
 	defer ledger.lock.Unlock()
@@ -106,7 +115,7 @@ func handleConnection(conn net.Conn) {
 				fmt.Println("Ending session with " + otherEnd)
 				return
 			}
-			broadcast(incoming) //data is translated to transaction and sent on
+			broadcast(incoming) //Data is translated to transaction and sent on
 		}
 	}
 }
@@ -115,7 +124,7 @@ func turnIntoAServer() {
 	name, _ := os.Hostname()         //Find own name
 	addrs, _ := net.LookupHost(name) //Find own address
 	for indx, addr := range addrs {
-		//Printer adresse
+		//Prints address
 		fmt.Println("Address number " + strconv.Itoa(indx) + ": " + addr)
 	}
 	ln, _ := net.Listen("tcp", "") //Listen for incoming connections
@@ -131,15 +140,23 @@ func turnIntoAServer() {
 
 func takeInputFromUser() {
 	reader := bufio.NewReader(os.Stdin)
-	decoder := gob.NewDecoder(reader)
 	for {
-		var transaction Transaction
-		fmt.Print("> ")
-		err := decoder.Decode(&transaction)
+		fmt.Println("Please input sender:")
+		from, err := reader.ReadString('\n')
+		fmt.Println("Please input receiver:")
+		to, err := reader.ReadString('\n')
+		fmt.Println("Please input amount:")
+		amountString, err := reader.ReadString('\n')
+		from = strings.Replace(from, "\n", "", -1)
+		to = strings.Replace(to, "\n", "", -1)
+		amountString = strings.Replace(amountString, "\n", "", -1)
+		amount, err := strconv.Atoi(amountString)
 		if err != nil {
-			return
+			fmt.Println("Error! try again")
+		} else {
+			transaction := createTransaction(from, to, amount)
+			go broadcast(transaction)
 		}
-		go broadcast(transaction)
 	}
 }
 
