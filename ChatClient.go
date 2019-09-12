@@ -17,8 +17,9 @@ var ledger = MakeLedger()
 var tClock *Clock
 var packagesSent int
 var myID string
+var circle *Circle
 
-func broadcast(pack Package) {
+func broadcast(pack *Package) {
 	dns.lock.Lock()
 	defer dns.lock.Unlock()
 	for _, x := range dns.m {
@@ -35,28 +36,42 @@ func broadcast(pack Package) {
 func handleConnection(conn net.Conn) {
 	defer dns.RemoveConnection(conn)
 	defer conn.Close()
-	decoder := gob.NewDecoder(conn)
-	var incoming Package
+	otherEnd := conn.RemoteAddr().String() //Find address of connection
+	pack := &Package{}
+	dec := gob.NewDecoder(conn)
 	for {
-		otherEnd := conn.RemoteAddr().String() //Find address of connection
-		for {
-			err := decoder.Decode(&incoming)
-			if err != nil {
-				fmt.Println("Ending session with " + otherEnd)
-				return
-			}
-			tClock.lock.Lock()
-			defer tClock.lock.Unlock()
-			if checkClock(incoming.transaction.ID, incoming.number) { //checks if transaction is new
-				setClock(incoming.transaction.ID, incoming.number)
-				ledger.Transaction(incoming.transaction)
-				broadcast(incoming) //Package is sent onward
-			}
+		err := dec.Decode(pack)
+		if err != nil {
+			fmt.Println("Ending session with " + otherEnd)
+			return
 		}
+		interpret(pack)
 	}
 }
 
-func turnIntoAServer() {
+//Interpret : function for checking the contents of received packages
+func interpret(pack *Package) {
+	if pack.Transaction != nil {
+		tClock.lock.Lock()
+		defer tClock.lock.Unlock()
+		if checkClock(pack.Transaction.ID, pack.Number) { //checks if transaction is new
+			setClock(pack.Transaction.ID, pack.Number)
+			ledger.Transaction(pack.Transaction)
+			broadcast(pack) //Package is sent onward
+		}
+	}
+	if pack.Circle != nil {
+		circle = pack.Circle //Circle is updated
+	}
+	if pack.Address != "" {
+		circle.Lock.Lock()
+		defer circle.Lock.Unlock()
+		circle.M[len(circle.M)] = pack.Address //TODO:: reformat circle to sorted list/slice
+	}
+
+}
+
+func listenForConnections() {
 	name, _ := os.Hostname()         //Find own name
 	addrs, _ := net.LookupHost(name) //Find own address
 	for indx, addr := range addrs {
@@ -69,6 +84,7 @@ func turnIntoAServer() {
 		fmt.Println("Listening on port " + port)
 		conn, _ := ln.Accept() //Accept incoming TCP-connections
 		dns.AddConnection(conn)
+		circle.AddPeer(conn.RemoteAddr().String())
 		go handleConnection(conn)
 	}
 }
@@ -139,11 +155,11 @@ func main() {
 		//address responds
 		dns.AddConnection(conn)
 		go handleConnection(conn)
-		go turnIntoAServer()
+		go listenForConnections()
 		takeInputFromUser()
 	} else {
 		//address not responding
-		go turnIntoAServer()
+		go listenForConnections()
 		takeInputFromUser()
 	}
 }
