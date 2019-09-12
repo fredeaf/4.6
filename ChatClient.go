@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/gob"
 	"fmt"
+	"github.com/google/uuid"
 	"net"
 	"os"
 	"strconv"
@@ -16,6 +17,7 @@ var dns = MakeDNS()
 var ledger = MakeLedger()
 var tClock *clock
 var packagesSent int
+var myID string
 
 //Package : a container for Transactions with a counter
 type Package struct {
@@ -23,7 +25,7 @@ type Package struct {
 	transaction *Transaction
 }
 
-//packTransaction : packages Transactions with a package id
+//packTransaction : packages Transactions with a package myID
 func packTransaction(transaction *Transaction) Package {
 	packagesSent++
 	return Package{
@@ -81,7 +83,7 @@ func setClock(id string, packageNumber int) {
 	tClock.m[id] = append(tClock.m[id], packageNumber)
 }
 
-//checkClock : Checks if a packageNumber has been received from an id before
+//checkClock : Checks if a packageNumber has been received from an myID before
 func checkClock(id string, packageNumber int) bool {
 	if contains(tClock.m[id], packageNumber) { //Checks if packageNumber was seen
 		return true
@@ -103,7 +105,7 @@ func contains(c []int, n int) bool {
 //createTransaction : creates a transaction
 func createTransaction(from string, to string, amount int) *Transaction {
 	transaction := new(Transaction)
-	transaction.ID = "todo" //TODO create ID
+	transaction.ID = myID
 	transaction.Amount = amount
 	transaction.From = from
 	transaction.To = to
@@ -149,8 +151,7 @@ func turnIntoAServer() {
 	name, _ := os.Hostname()         //Find own name
 	addrs, _ := net.LookupHost(name) //Find own address
 	for indx, addr := range addrs {
-		//Prints address
-		fmt.Println("Address number " + strconv.Itoa(indx) + ": " + addr)
+		fmt.Println("Address number " + strconv.Itoa(indx) + ": " + addr) //Prints address
 	}
 	ln, _ := net.Listen("tcp", "") //Listen for incoming connections
 	defer ln.Close()
@@ -214,8 +215,9 @@ func takeInputFromUser() {
 
 func main() {
 	packagesSent = 0
+	newID, err := uuid.NewUUID() //generates unique id
+	myID = uuid.UUID.String(newID)
 	tClock = MakeClock()
-
 	var reader = bufio.NewReader(os.Stdin) //Create reader to get user input
 	fmt.Println("Please input an IP address and port number of known network")
 	address, err := reader.ReadString('\n') //Reads input
