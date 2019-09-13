@@ -53,6 +53,7 @@ func (circle *Circle) nextTenPeers(myAddr string) []string {
 		for {
 			if len(circle.Peers)-1 > len(res) {
 				res = append(circle.Peers[key : key+1])
+				key++
 			} else {
 				return res
 			}
@@ -61,7 +62,6 @@ func (circle *Circle) nextTenPeers(myAddr string) []string {
 			}
 		}
 	}
-
 	return res
 }
 

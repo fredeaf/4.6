@@ -69,7 +69,13 @@ func interpret(pack *Package) {
 	if pack.Circle != nil {
 		circle = pack.Circle    //Circle is updated
 		circle.Announce(myAddr) //Announces presence to all other peers
-
+		for _, p := range circle.nextTenPeers(myAddr) {
+			conn, _ := net.Dial("tcp", p)
+			if conn != nil {
+				dns.AddConnection(conn)
+				go handleConnection(conn)
+			}
+		}
 	}
 	if pack.Address != "" {
 		if pack.NewComer {
@@ -137,6 +143,13 @@ func takeInputFromUser() {
 					for _, p := range circle.Peers {
 						fmt.Println(p)
 
+					}
+				}
+			case "4\n":
+				{
+					fmt.Println("dns test")
+					for _, x := range dns.m {
+						fmt.Println(x.RemoteAddr().String())
 					}
 				}
 

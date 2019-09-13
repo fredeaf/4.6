@@ -22,7 +22,19 @@ func MakeDNS() *DNS {
 func (dns *DNS) AddConnection(connection net.Conn) {
 	dns.lock.Lock()
 	defer dns.lock.Unlock()
-	dns.m[len(dns.m)] = connection
+	if newConnection(dns.m, connection) {
+		dns.m[len(dns.m)] = connection
+	}
+}
+
+//simple reverse contains function for peers
+func newConnection(connections map[int]net.Conn, new net.Conn) bool {
+	for _, p := range connections {
+		if p == new {
+			return false
+		}
+	}
+	return true
 }
 
 //RemoveConnection : Removes a connection from dns
