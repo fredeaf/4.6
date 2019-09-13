@@ -1,6 +1,8 @@
 package __6
 
 import (
+	"encoding/gob"
+	"net"
 	"sort"
 	"sync"
 )
@@ -11,22 +13,34 @@ type Circle struct {
 	Lock  sync.Mutex
 }
 
-//MakeDNS : dns initiator
+//MakeCircle : Circle initiator
 func MakeCircle() *Circle {
 	circle := new(Circle)
 	circle.Peers = make([]string, 0)
 	return circle
 }
 
-//AddConnection : adds a connection to dns
+//AddPeer : adds a peer to circle
 func (circle *Circle) AddPeer(address string) {
 	circle.Lock.Lock()
 	defer circle.Lock.Unlock()
-	circle.Peers = append(circle.Peers, address)
-	sort.Strings(circle.Peers)
+	if isNew(circle.Peers, address) {
+		circle.Peers = append(circle.Peers, address)
+		sort.Strings(circle.Peers)
+	}
 }
 
-//RemoveConnection : Removes a connection from dns
+//simple reverse contains function for peers
+func isNew(peers []string, new string) bool {
+	for _, p := range peers {
+		if p == new {
+			return false
+		}
+	}
+	return true
+}
+
+//RemovePeer : Removes a connection from Circle
 func (circle *Circle) RemovePeer(address string) {
 	circle.Lock.Lock()
 	defer circle.Lock.Unlock()
@@ -37,4 +51,27 @@ func (circle *Circle) RemovePeer(address string) {
 		}
 	}
 	circle.Peers = PeersLeft
+}
+
+//Announce : announces presence to whole circle
+func (circle *Circle) Announce(addr string) {
+	circle.Lock.Lock()
+	defer circle.Lock.Unlock()
+	pack := new(Package)
+	pack.Address = addr
+	for _, p := range circle.Peers {
+		if p != addr {
+			sendAddr(pack, p)
+		}
+	}
+}
+
+//sendAddr : helper function for Announce
+func sendAddr(pack *Package, peer string) {
+	conn, _ := net.Dial("tcp", peer)
+	if conn != nil {
+		defer conn.Close()
+		enc := gob.NewEncoder(conn)
+		enc.Encode(pack)
+	}
 }

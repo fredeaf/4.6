@@ -18,6 +18,7 @@ var tClock *Clock
 var packagesSent int
 var myID string
 var circle *Circle
+var myAddr string
 
 func broadcast(pack *Package) {
 	dns.lock.Lock()
@@ -56,16 +57,15 @@ func interpret(pack *Package) {
 		defer tClock.lock.Unlock()
 		if checkClock(pack.Transaction.ID, pack.Number) { //checks if transaction is new
 			setClock(pack.Transaction.ID, pack.Number)
-			ledger.Transaction(pack.Transaction)
-			broadcast(pack) //Package is sent onward
+			ledger.Transaction(pack.Transaction) // Ledger is updated with new transaction
+			broadcast(pack)                      //Package is sent onward
 		}
 	}
 	if pack.Circle != nil {
-		circle = pack.Circle //Circle is updated
+		circle = pack.Circle    //Circle is updated
+		circle.Announce(myAddr) //Announces presence to all other peers
 	}
 	if pack.Address != "" {
-		circle.Lock.Lock()
-		defer circle.Lock.Unlock()
 		circle.AddPeer(pack.Address)
 	}
 
@@ -78,6 +78,8 @@ func listenForConnections() {
 		fmt.Println("Address number " + strconv.Itoa(indx) + ": " + addr) //Prints address
 	}
 	ln, _ := net.Listen("tcp", "") //Listen for incoming connections
+	myAddr = ln.Addr().String()
+	circle.AddPeer(myAddr) //Adds self to
 	defer ln.Close()
 	for {
 		_, port, _ := net.SplitHostPort(ln.Addr().String()) //Find port used for connection
@@ -147,7 +149,7 @@ func main() {
 	gob.Register(Circle{})
 	gob.Register(Transaction{})
 	var reader = bufio.NewReader(os.Stdin) //Create reader to get user input
-	fmt.Println("Please input an IP address and port number of known network")
+	fmt.Println("Please input an IP address and port number of known network member")
 	address, err := reader.ReadString('\n') //Reads input
 	if err != nil {
 		return
