@@ -42,17 +42,23 @@ func isNew(peers []string, new string) bool {
 
 func (circle *Circle) nextTenPeers(myAddr string) []string {
 	var pos int
+	var res []string
 	for k, p := range circle.Peers {
 		if p == myAddr {
 			pos = k
 		}
 	}
-	res := circle.Peers[pos+1:]
+	if len(circle.Peers) == pos-1 {
+		res = circle.Peers[pos:]
+	} else {
+		res = circle.Peers[pos+1:]
+	}
 	key := 0
 	if len(res) < 10 {
 		for {
 			if len(circle.Peers)-1 > len(res) {
-				res = append(circle.Peers[key : key+1])
+				temp := circle.Peers[key : key+1]
+				res = append(res, temp...)
 				key++
 			} else {
 				return res
@@ -61,6 +67,9 @@ func (circle *Circle) nextTenPeers(myAddr string) []string {
 				return res
 			}
 		}
+	}
+	if len(res) > 10 {
+		res = res[:10]
 	}
 	return res
 }
