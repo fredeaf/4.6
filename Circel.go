@@ -40,6 +40,31 @@ func isNew(peers []string, new string) bool {
 	return true
 }
 
+func (circle *Circle) nextTenPeers(myAddr string) []string {
+	var pos int
+	for k, p := range circle.Peers {
+		if p == myAddr {
+			pos = k
+		}
+	}
+	res := circle.Peers[pos+1:]
+	key := 0
+	if len(res) < 10 {
+		for {
+			if len(circle.Peers)-1 > len(res) {
+				res = append(circle.Peers[key : key+1])
+			} else {
+				return res
+			}
+			if len(res) == 10 {
+				return res
+			}
+		}
+	}
+
+	return res
+}
+
 //RemovePeer : Removes a connection from Circle
 func (circle *Circle) RemovePeer(address string) {
 	circle.lock.Lock()

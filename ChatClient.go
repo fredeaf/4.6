@@ -69,6 +69,7 @@ func interpret(pack *Package) {
 	if pack.Circle != nil {
 		circle = pack.Circle    //Circle is updated
 		circle.Announce(myAddr) //Announces presence to all other peers
+
 	}
 	if pack.Address != "" {
 		if pack.NewComer {
