@@ -66,7 +66,7 @@ func interpret(pack *Package) {
 	if pack.Address != "" {
 		circle.Lock.Lock()
 		defer circle.Lock.Unlock()
-		circle.M[len(circle.M)] = pack.Address //TODO:: reformat circle to sorted list/slice
+		circle.AddPeer(pack.Address)
 	}
 
 }
@@ -140,9 +140,12 @@ func takeInputFromUser() {
 
 func main() {
 	packagesSent = 0
+	circle = MakeCircle()
 	newID, err := uuid.NewUUID() //generates unique id
 	myID = uuid.UUID.String(newID)
 	tClock = MakeClock()
+	gob.Register(Circle{})
+	gob.Register(Transaction{})
 	var reader = bufio.NewReader(os.Stdin) //Create reader to get user input
 	fmt.Println("Please input an IP address and port number of known network")
 	address, err := reader.ReadString('\n') //Reads input
