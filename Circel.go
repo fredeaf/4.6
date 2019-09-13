@@ -1,4 +1,4 @@
-package __6
+package main
 
 import (
 	"encoding/gob"
@@ -10,7 +10,7 @@ import (
 //Circle : structure containing addresses of network members
 type Circle struct {
 	Peers []string
-	Lock  sync.Mutex
+	lock  sync.Mutex
 }
 
 //MakeCircle : Circle initiator
@@ -22,8 +22,8 @@ func MakeCircle() *Circle {
 
 //AddPeer : adds a peer to circle
 func (circle *Circle) AddPeer(address string) {
-	circle.Lock.Lock()
-	defer circle.Lock.Unlock()
+	circle.lock.Lock()
+	defer circle.lock.Unlock()
 	if isNew(circle.Peers, address) {
 		circle.Peers = append(circle.Peers, address)
 		sort.Strings(circle.Peers)
@@ -42,8 +42,8 @@ func isNew(peers []string, new string) bool {
 
 //RemovePeer : Removes a connection from Circle
 func (circle *Circle) RemovePeer(address string) {
-	circle.Lock.Lock()
-	defer circle.Lock.Unlock()
+	circle.lock.Lock()
+	defer circle.lock.Unlock()
 	PeersLeft := circle.Peers[:0]
 	for _, v := range circle.Peers {
 		if v != address {
@@ -55,8 +55,8 @@ func (circle *Circle) RemovePeer(address string) {
 
 //Announce : announces presence to whole circle
 func (circle *Circle) Announce(addr string) {
-	circle.Lock.Lock()
-	defer circle.Lock.Unlock()
+	circle.lock.Lock()
+	defer circle.lock.Unlock()
 	pack := new(Package)
 	pack.Address = addr
 	for _, p := range circle.Peers {

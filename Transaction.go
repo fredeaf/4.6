@@ -1,4 +1,4 @@
-package __6
+package main
 
 type Transaction struct {
 	ID     string

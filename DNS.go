@@ -1,4 +1,4 @@
-package __6
+package main
 
 import (
 	"net"

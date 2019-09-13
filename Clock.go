@@ -1,4 +1,4 @@
-package __6
+package main
 
 import "sync"
 
@@ -23,9 +23,9 @@ func setClock(id string, packageNumber int) {
 //checkClock : Checks if a packageNumber has been received from an myID before
 func checkClock(id string, packageNumber int) bool {
 	if contains(tClock.m[id], packageNumber) { //Checks if packageNumber was seen
-		return true
-	} else {
 		return false
+	} else {
+		return true
 	}
 }
 

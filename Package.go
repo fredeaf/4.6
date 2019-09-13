@@ -1,4 +1,4 @@
-package __6
+package main
 
 //Package : a container for Transactions with a counter
 type Package struct {

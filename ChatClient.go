@@ -1,4 +1,4 @@
-package __6
+package main
 
 import (
 	"bufio"
@@ -31,18 +31,18 @@ func broadcast(pack *Package) {
 			fmt.Println(err)
 		}
 	}
-	fmt.Println(ledger) //Updated ledger is printed
 }
 
 func handleConnection(conn net.Conn) {
 	defer dns.RemoveConnection(conn)
 	defer conn.Close()
 	otherEnd := conn.RemoteAddr().String() //Find address of connection
-	pack := &Package{}
-	dec := gob.NewDecoder(conn)
 	for {
+		pack := &Package{}
+		dec := gob.NewDecoder(conn)
 		err := dec.Decode(pack)
 		if err != nil {
+			fmt.Println(err)
 			fmt.Println("Ending session with " + otherEnd)
 			return
 		}
@@ -53,12 +53,17 @@ func handleConnection(conn net.Conn) {
 //Interpret : function for checking the contents of received packages
 func interpret(pack *Package) {
 	if pack.Transaction != nil {
-		tClock.lock.Lock()
-		defer tClock.lock.Unlock()
-		if checkClock(pack.Transaction.ID, pack.Number) { //checks if transaction is new
-			setClock(pack.Transaction.ID, pack.Number)
-			ledger.Transaction(pack.Transaction) // Ledger is updated with new transaction
-			broadcast(pack)                      //Package is sent onward
+		if pack.Transaction.ID != myID {
+			tClock.lock.Lock()
+			defer tClock.lock.Unlock()
+			if checkClock(pack.Transaction.ID, pack.Number) { //checks if transaction is new
+				setClock(pack.Transaction.ID, pack.Number)
+				ledger.Transaction(pack.Transaction) // Ledger is updated with new transaction
+				fmt.Println("Ledger updated: ")
+				ledger.PrintLedger() //Updated ledger is printed
+				fmt.Println("Please input to choose an action: 1 for new transaction, 2 to show ledger ")
+				broadcast(pack) //Package is sent onward
+			}
 		}
 	}
 	if pack.Circle != nil {
@@ -68,7 +73,6 @@ func interpret(pack *Package) {
 	if pack.Address != "" {
 		circle.AddPeer(pack.Address)
 	}
-
 }
 
 func listenForConnections() {
@@ -79,14 +83,13 @@ func listenForConnections() {
 	}
 	ln, _ := net.Listen("tcp", "") //Listen for incoming connections
 	myAddr = ln.Addr().String()
+	myAddr = addrs[0] + strings.Replace(myAddr, "[::]", "", -1)
+	fmt.Println("My address: " + myAddr)
 	circle.AddPeer(myAddr) //Adds self to
 	defer ln.Close()
 	for {
-		_, port, _ := net.SplitHostPort(ln.Addr().String()) //Find port used for connection
-		fmt.Println("Listening on port " + port)
 		conn, _ := ln.Accept() //Accept incoming TCP-connections
 		dns.AddConnection(conn)
-		circle.AddPeer(conn.RemoteAddr().String())
 		go handleConnection(conn)
 	}
 }
@@ -94,9 +97,7 @@ func listenForConnections() {
 func takeInputFromUser() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Println("Please choose an action: ")
-		fmt.Println("Enter 1 to show ledger")
-		fmt.Println("Enter 2 to input a transaction")
+		fmt.Println("Please input to choose an action: 1 for new transaction, 2 to show ledger ")
 		ress, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("Input error, try again")
@@ -119,17 +120,14 @@ func takeInputFromUser() {
 					} else {
 						transaction := createTransaction(myID, from, to, amount)
 						newPackage := packTransaction(transaction)
+						ledger.Transaction(transaction)
 						go broadcast(newPackage)
 					}
 				}
 			case "2\n":
 				{
 					fmt.Println("Current Ledger:")
-					ledger.lock.Lock()
-					defer ledger.lock.Unlock()
-					for name, amount := range ledger.Accounts {
-						fmt.Println(name + ": " + strconv.Itoa(amount))
-					}
+					ledger.PrintLedger()
 				}
 
 			default:
@@ -146,12 +144,14 @@ func main() {
 	newID, err := uuid.NewUUID() //generates unique id
 	myID = uuid.UUID.String(newID)
 	tClock = MakeClock()
+	gob.Register(Package{})
 	gob.Register(Circle{})
 	gob.Register(Transaction{})
 	var reader = bufio.NewReader(os.Stdin) //Create reader to get user input
 	fmt.Println("Please input an IP address and port number of known network member")
 	address, err := reader.ReadString('\n') //Reads input
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	address = strings.Replace(address, "\n", "", -1)          //Trimming address
