@@ -6,6 +6,7 @@ type Package struct {
 	Transaction *Transaction
 	Address     string
 	Circle      *Circle
+	NewComer    bool
 }
 
 //packTransaction : packages Transactions with a package myID

@@ -71,21 +71,21 @@ func interpret(pack *Package) {
 		circle.Announce(myAddr) //Announces presence to all other peers
 	}
 	if pack.Address != "" {
+		if pack.NewComer {
+			conn, _ := net.Dial("tcp", pack.Address)
+			if conn != nil {
+				enc := gob.NewEncoder(conn)
+				initialPack := new(Package)
+				initialPack.Circle = circle
+				enc.Encode(initialPack) //send circle to new peer
+			}
+		}
 		circle.AddPeer(pack.Address)
+
 	}
 }
 
-func listenForConnections() {
-	name, _ := os.Hostname()         //Find own name
-	addrs, _ := net.LookupHost(name) //Find own address
-	for indx, addr := range addrs {
-		fmt.Println("Address number " + strconv.Itoa(indx) + ": " + addr) //Prints address
-	}
-	ln, _ := net.Listen("tcp", "") //Listen for incoming connections
-	myAddr = ln.Addr().String()
-	myAddr = addrs[0] + strings.Replace(myAddr, "[::]", "", -1)
-	fmt.Println("My address: " + myAddr)
-	circle.AddPeer(myAddr) //Adds self to
+func listenForConnections(ln net.Listener) {
 	defer ln.Close()
 	for {
 		conn, _ := ln.Accept() //Accept incoming TCP-connections
@@ -156,15 +156,28 @@ func main() {
 	}
 	address = strings.Replace(address, "\n", "", -1)          //Trimming address
 	conn, _ := net.DialTimeout("tcp", address, 5*time.Second) //Attempts connection to given address
+	name, _ := os.Hostname()                                  //Find own name
+	addrs, _ := net.LookupHost(name)                          //Find own address
+	for indx, addr := range addrs {
+		fmt.Println("Address number " + strconv.Itoa(indx) + ": " + addr) //Prints address
+	}
+	ln, _ := net.Listen("tcp", "") //Listen for incoming connections
+	myAddr = ln.Addr().String()
+	myAddr = addrs[0] + strings.Replace(myAddr, "[::]", "", -1)
+	fmt.Println("My address: " + myAddr)
+	circle.AddPeer(myAddr) //Adds self to Circle
 	if conn != nil {
 		//address responds
 		dns.AddConnection(conn)
+		joinReq := new(Package)
+		enc := gob.NewEncoder(conn)
+		enc.Encode(joinReq)
 		go handleConnection(conn)
-		go listenForConnections()
+		go listenForConnections(ln)
 		takeInputFromUser()
 	} else {
 		//address not responding
-		go listenForConnections()
+		go listenForConnections(ln)
 		takeInputFromUser()
 	}
 }
