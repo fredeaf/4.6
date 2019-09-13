@@ -76,6 +76,7 @@ func interpret(pack *Package) {
 			if conn != nil {
 				enc := gob.NewEncoder(conn)
 				initialPack := new(Package)
+				circle.AddPeer(pack.Address)
 				initialPack.Circle = circle
 				enc.Encode(initialPack) //send circle to new peer
 			}
@@ -129,6 +130,14 @@ func takeInputFromUser() {
 					fmt.Println("Current Ledger:")
 					ledger.PrintLedger()
 				}
+			case "3\n":
+				{
+					fmt.Println("test:")
+					for _, p := range circle.Peers {
+						fmt.Println(p)
+
+					}
+				}
 
 			default:
 				fmt.Println("invalid input")
@@ -158,22 +167,21 @@ func main() {
 	conn, _ := net.DialTimeout("tcp", address, 5*time.Second) //Attempts connection to given address
 	name, _ := os.Hostname()                                  //Find own name
 	addrs, _ := net.LookupHost(name)                          //Find own address
-	for indx, addr := range addrs {
-		fmt.Println("Address number " + strconv.Itoa(indx) + ": " + addr) //Prints address
-	}
-	ln, _ := net.Listen("tcp", "") //Listen for incoming connections
+	ln, _ := net.Listen("tcp", "")                            //Listen for incoming connections
 	myAddr = ln.Addr().String()
-	myAddr = addrs[0] + strings.Replace(myAddr, "[::]", "", -1)
+	myAddr = addrs[0] + strings.Replace(myAddr, "[::]", "", -1) //add port to address
 	fmt.Println("My address: " + myAddr)
 	circle.AddPeer(myAddr) //Adds self to Circle
 	if conn != nil {
 		//address responds
 		dns.AddConnection(conn)
-		joinReq := new(Package)
-		enc := gob.NewEncoder(conn)
-		enc.Encode(joinReq)
 		go handleConnection(conn)
 		go listenForConnections(ln)
+		joinReq := new(Package)
+		enc := gob.NewEncoder(conn)
+		joinReq.Address = myAddr
+		joinReq.NewComer = true
+		enc.Encode(joinReq)
 		takeInputFromUser()
 	} else {
 		//address not responding
