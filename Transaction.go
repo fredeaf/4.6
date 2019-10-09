@@ -25,7 +25,7 @@ func (l *Ledger) Transaction(t *SignedTransaction) {
 	* the public key t.From.
 	 */
 
-	validSgnature := true
+	validSignature := true
 	pupId, err := x509.ParsePKCS1PublicKey([]byte(t.From))
 	if err != nil {
 		fmt.Println(err)
@@ -34,10 +34,10 @@ func (l *Ledger) Transaction(t *SignedTransaction) {
 	err = rsa.VerifyPKCS1v15(pupId, crypto.SHA256, []byte(signedVal), []byte(t.Signature))
 
 	if err != nil {
-		validSgnature = false
+		validSignature = false
 	}
 
-	if validSgnature {
+	if validSignature {
 		l.Accounts[t.From] -= t.Amount
 		l.Accounts[t.To] += t.Amount
 	}

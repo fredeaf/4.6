@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rsa"
 	"encoding/gob"
 	"net"
 	"sort"
@@ -10,36 +9,25 @@ import (
 
 //Circle : structure containing addresses of network members
 type Circle struct {
-	Peers     []string
-	addrToKey map[string]*rsa.PublicKey
-	lock      sync.Mutex
+	Peers []string
+	lock  sync.Mutex
 }
 
 //MakeCircle : Circle initiator
 func MakeCircle() *Circle {
 	circle := new(Circle)
 	circle.Peers = make([]string, 0)
-	circle.addrToKey = make(map[string]*rsa.PublicKey)
 	return circle
 }
 
 //AddPeer : adds a peer to circle
-func (circle *Circle) AddPeer(address string, key *rsa.PublicKey) {
+func (circle *Circle) AddPeer(address string) {
 	circle.lock.Lock()
 	defer circle.lock.Unlock()
 	if isNew(circle.Peers, address) {
 		circle.Peers = append(circle.Peers, address)
 		sort.Strings(circle.Peers)
-		circle.addrToKey[address] = key
 	}
-}
-
-func (circle *Circle) getKey(address string) *rsa.PublicKey {
-	var key *rsa.PublicKey
-	if !isNew(circle.Peers, address) {
-		key = circle.addrToKey[address]
-	}
-	return key
 }
 
 //simple reverse contains function for peers
@@ -100,11 +88,13 @@ func (circle *Circle) RemovePeer(address string) {
 }
 
 //Announce : announces presence to whole circle
-func (circle *Circle) Announce(addr string) {
+func (circle *Circle) Announce(addr string, uuid string, pubKey string) {
 	circle.lock.Lock()
 	defer circle.lock.Unlock()
 	pack := new(Package)
 	pack.Address = addr
+	pack.key = pubKey
+	pack.uuid = uuid
 	for _, p := range circle.Peers {
 		if p != addr {
 			sendAddr(pack, p)

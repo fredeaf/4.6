@@ -4,10 +4,12 @@ package main
 type Package struct {
 	Number      int
 	Transaction *SignedTransaction
+	uuid        string
 	Address     string
 	key         string
 	Circle      *Circle
 	NewComer    bool
+	keyStore    *KeyStore
 }
 
 //packTransaction : packages Transactions with a package myID

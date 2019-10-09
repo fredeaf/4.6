@@ -25,6 +25,7 @@ var circle *Circle
 var myAddr string
 var myPrivateKey *rsa.PrivateKey
 var myPublicKey *rsa.PublicKey
+var keyStore = MakeStore()
 
 func broadcast(pack *Package) {
 	dns.lock.Lock()
@@ -52,7 +53,6 @@ func handleConnection(conn net.Conn) {
 			fmt.Println("Ending session with " + otherEnd)
 			return
 		}
-		pack.Address = conn.RemoteAddr().String()
 		interpret(pack)
 	}
 }
@@ -74,8 +74,8 @@ func interpret(pack *Package) {
 		}
 	}
 	if pack.Circle != nil {
-		circle = pack.Circle    //Circle is updated
-		circle.Announce(myAddr) //Announces presence to all other peers
+		circle = pack.Circle                                                           //Circle is updated
+		circle.Announce(myAddr, myID, string(x509.MarshalPKCS1PublicKey(myPublicKey))) //Announces presence to all other peers
 		for _, p := range circle.nextTenPeers(myAddr) {
 			conn, _ := net.Dial("tcp", p)
 			if conn != nil {
@@ -86,6 +86,7 @@ func interpret(pack *Package) {
 	}
 	if pack.Address != "" {
 		newPupId, err := x509.ParsePKCS1PublicKey([]byte(pack.key))
+		keyStore.AddKey(pack.uuid, newPupId)
 		if pack.NewComer {
 			conn, _ := net.Dial("tcp", pack.Address)
 			if conn != nil {
@@ -94,13 +95,18 @@ func interpret(pack *Package) {
 				if err != nil {
 					fmt.Println(err)
 				}
-				circle.AddPeer(pack.Address, newPupId)
+				circle.AddPeer(pack.Address)
 				initialPack.Circle = circle
-
+				initialPack.keyStore = keyStore
 				enc.Encode(initialPack) //send circle to new peer
 			}
 		}
-		circle.AddPeer(pack.Address, newPupId)
+		circle.AddPeer(pack.Address)
+		key, err := x509.ParsePKCS1PublicKey([]byte(pack.key))
+		if err != nil {
+			fmt.Println(err)
+		}
+		keyStore.AddKey(pack.uuid, key)
 
 	}
 }
@@ -125,7 +131,7 @@ func takeInputFromUser() {
 			switch ress {
 			case "1\n":
 				{
-					fmt.Println("Please input address of receiver:")
+					fmt.Println("Please input uuid of receiver:")
 					to, err := reader.ReadString('\n')
 					fmt.Println("Please input amount:")
 					amountString, err := reader.ReadString('\n')
@@ -138,7 +144,7 @@ func takeInputFromUser() {
 					} else {
 						fmt.Println(to)
 						fmt.Println(circle.Peers)
-						toKey := string(x509.MarshalPKCS1PublicKey(circle.getKey(to)))
+						toKey := string(x509.MarshalPKCS1PublicKey(keyStore.GetKey(to)))
 						signedVal := from + toKey + strconv.Itoa(amount)
 						signature, err := rsa.SignPKCS1v15(rand.Reader, myPrivateKey, crypto.SHA256, []byte(signedVal))
 						if err != nil {
@@ -193,7 +199,7 @@ func main() {
 	gob.Register(Package{})
 	gob.Register(Circle{})
 	gob.Register(SignedTransaction{})
-	gob.Register(rsa.PublicKey{})
+	gob.Register(KeyStore{})
 	var reader = bufio.NewReader(os.Stdin) //Create reader to get user input
 	fmt.Println("Please input an IP address and port number of known network member")
 	address, err := reader.ReadString('\n') //Reads input
@@ -207,11 +213,10 @@ func main() {
 	addrs, _ := net.LookupHost(name)                          //Find own address
 	ln, _ := net.Listen("tcp", "")                            //Listen for incoming connections
 	myAddr = ln.Addr().String()
-	fmt.Println(addrs)
 	myAddr = addrs[0] + strings.Replace(myAddr, "[::]", "", -1) //add port to address
 	fmt.Println("My address: " + myAddr)
 	fmt.Println("my id: " + myID)
-	circle.AddPeer(myAddr, myPublicKey) //Adds self to Circle
+	circle.AddPeer(myAddr) //Adds self to Circle
 	if conn != nil {
 		//address responds
 		dns.AddConnection(conn)
@@ -222,6 +227,7 @@ func main() {
 		joinReq.Address = myAddr
 		joinReq.NewComer = true
 		joinReq.key = string(x509.MarshalPKCS1PublicKey(myPublicKey))
+		joinReq.uuid = myID
 		enc.Encode(joinReq)
 		takeInputFromUser()
 	} else {
