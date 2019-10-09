@@ -2,6 +2,9 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/gob"
 	"fmt"
 	"github.com/google/uuid"
@@ -19,6 +22,8 @@ var packagesSent int
 var myID string
 var circle *Circle
 var myAddr string
+var myPrivateKey *rsa.PrivateKey
+var myPublicKey *rsa.PublicKey
 
 func broadcast(pack *Package) {
 	dns.lock.Lock()
@@ -166,10 +171,13 @@ func main() {
 	circle = MakeCircle()
 	newID, err := uuid.NewUUID() //generates unique id
 	myID = uuid.UUID.String(newID)
+	myPrivateKey, _ = rsa.GenerateKey(rand.Reader, 10)
+	myPublicKey = &myPrivateKey.PublicKey
 	tClock = MakeClock()
 	gob.Register(Package{})
 	gob.Register(Circle{})
-	gob.Register(Transaction{})
+	gob.Register(SignedTransaction{})
+	gob.Register(rsa.PublicKey{})
 	var reader = bufio.NewReader(os.Stdin) //Create reader to get user input
 	fmt.Println("Please input an IP address and port number of known network member")
 	address, err := reader.ReadString('\n') //Reads input
@@ -195,6 +203,7 @@ func main() {
 		enc := gob.NewEncoder(conn)
 		joinReq.Address = myAddr
 		joinReq.NewComer = true
+		joinReq.key = string(x509.MarshalPKCS1PublicKey(myPublicKey))
 		enc.Encode(joinReq)
 		takeInputFromUser()
 	} else {
