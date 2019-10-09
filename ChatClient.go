@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -51,6 +52,7 @@ func handleConnection(conn net.Conn) {
 			fmt.Println("Ending session with " + otherEnd)
 			return
 		}
+		pack.Address = conn.RemoteAddr().String()
 		interpret(pack)
 	}
 }
@@ -123,20 +125,26 @@ func takeInputFromUser() {
 			switch ress {
 			case "1\n":
 				{
-					fmt.Println("Please input sender:")
-					from, err := reader.ReadString('\n')
-					fmt.Println("Please input receiver:")
+					fmt.Println("Please input address of receiver:")
 					to, err := reader.ReadString('\n')
 					fmt.Println("Please input amount:")
 					amountString, err := reader.ReadString('\n')
-					from = strings.Replace(from, "\n", "", -1)
+					from := string(x509.MarshalPKCS1PublicKey(myPublicKey))
 					to = strings.Replace(to, "\n", "", -1)
 					amountString = strings.Replace(amountString, "\n", "", -1)
 					amount, err := strconv.Atoi(amountString)
 					if err != nil {
 						fmt.Println("Error! try again")
 					} else {
-						transaction := createTransaction(myID, from, to, amount)
+						fmt.Println(to)
+						fmt.Println(circle.Peers)
+						toKey := string(x509.MarshalPKCS1PublicKey(circle.getKey(to)))
+						signedVal := from + toKey + strconv.Itoa(amount)
+						signature, err := rsa.SignPKCS1v15(rand.Reader, myPrivateKey, crypto.SHA256, []byte(signedVal))
+						if err != nil {
+							fmt.Println(err)
+						}
+						transaction := createTransaction(myID, string(x509.MarshalPKCS1PublicKey(myPublicKey)), toKey, amount, string(signature))
 						newPackage := packTransaction(transaction)
 						ledger.Transaction(transaction)
 						go broadcast(newPackage)
@@ -199,6 +207,7 @@ func main() {
 	addrs, _ := net.LookupHost(name)                          //Find own address
 	ln, _ := net.Listen("tcp", "")                            //Listen for incoming connections
 	myAddr = ln.Addr().String()
+	fmt.Println(addrs)
 	myAddr = addrs[0] + strings.Replace(myAddr, "[::]", "", -1) //add port to address
 	fmt.Println("My address: " + myAddr)
 	fmt.Println("my id: " + myID)

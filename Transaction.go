@@ -1,5 +1,13 @@
 package main
 
+import (
+	"crypto"
+	"crypto/rsa"
+	"crypto/x509"
+	"fmt"
+	"strconv"
+)
+
 type SignedTransaction struct {
 	ID        string
 	From      string
@@ -16,7 +24,18 @@ func (l *Ledger) Transaction(t *SignedTransaction) {
 	* signature on the rest of the fields in t under
 	* the public key t.From.
 	 */
+
 	validSgnature := true
+	pupId, err := x509.ParsePKCS1PublicKey([]byte(t.From))
+	if err != nil {
+		fmt.Println(err)
+	}
+	signedVal := t.From + t.To + strconv.Itoa(t.Amount)
+	err = rsa.VerifyPKCS1v15(pupId, crypto.SHA256, []byte(signedVal), []byte(t.Signature))
+
+	if err != nil {
+		validSgnature = false
+	}
 
 	if validSgnature {
 		l.Accounts[t.From] -= t.Amount
@@ -25,11 +44,12 @@ func (l *Ledger) Transaction(t *SignedTransaction) {
 }
 
 //createTransaction : creates a transaction
-func createTransaction(id string, from string, to string, amount int) *SignedTransaction {
+func createTransaction(id string, from string, to string, amount int, signature string) *SignedTransaction {
 	transaction := new(SignedTransaction)
 	transaction.ID = id
 	transaction.Amount = amount
 	transaction.From = from
 	transaction.To = to
+	transaction.Signature = signature
 	return transaction
 }
