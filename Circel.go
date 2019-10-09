@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rsa"
 	"encoding/gob"
 	"net"
 	"sort"
@@ -9,25 +10,36 @@ import (
 
 //Circle : structure containing addresses of network members
 type Circle struct {
-	Peers []string
-	lock  sync.Mutex
+	Peers     []string
+	addrToKey map[string]*rsa.PublicKey
+	lock      sync.Mutex
 }
 
 //MakeCircle : Circle initiator
 func MakeCircle() *Circle {
 	circle := new(Circle)
 	circle.Peers = make([]string, 0)
+	circle.addrToKey = make(map[string]*rsa.PublicKey)
 	return circle
 }
 
 //AddPeer : adds a peer to circle
-func (circle *Circle) AddPeer(address string) {
+func (circle *Circle) AddPeer(address string, key *rsa.PublicKey) {
 	circle.lock.Lock()
 	defer circle.lock.Unlock()
 	if isNew(circle.Peers, address) {
 		circle.Peers = append(circle.Peers, address)
 		sort.Strings(circle.Peers)
+		circle.addrToKey[address] = key
 	}
+}
+
+func (circle *Circle) getKey(address string) *rsa.PublicKey {
+	var key *rsa.PublicKey
+	if !isNew(circle.Peers, address) {
+		key = circle.addrToKey[address]
+	}
+	return key
 }
 
 //simple reverse contains function for peers

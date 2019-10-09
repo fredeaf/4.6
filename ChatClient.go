@@ -83,17 +83,22 @@ func interpret(pack *Package) {
 		}
 	}
 	if pack.Address != "" {
+		newPupId, err := x509.ParsePKCS1PublicKey([]byte(pack.key))
 		if pack.NewComer {
 			conn, _ := net.Dial("tcp", pack.Address)
 			if conn != nil {
 				enc := gob.NewEncoder(conn)
 				initialPack := new(Package)
-				circle.AddPeer(pack.Address)
+				if err != nil {
+					fmt.Println(err)
+				}
+				circle.AddPeer(pack.Address, newPupId)
 				initialPack.Circle = circle
+
 				enc.Encode(initialPack) //send circle to new peer
 			}
 		}
-		circle.AddPeer(pack.Address)
+		circle.AddPeer(pack.Address, newPupId)
 
 	}
 }
@@ -171,7 +176,10 @@ func main() {
 	circle = MakeCircle()
 	newID, err := uuid.NewUUID() //generates unique id
 	myID = uuid.UUID.String(newID)
-	myPrivateKey, _ = rsa.GenerateKey(rand.Reader, 10)
+	myPrivateKey, err = rsa.GenerateKey(rand.Reader, 3000)
+	if err != nil {
+		fmt.Println(err)
+	}
 	myPublicKey = &myPrivateKey.PublicKey
 	tClock = MakeClock()
 	gob.Register(Package{})
@@ -193,7 +201,8 @@ func main() {
 	myAddr = ln.Addr().String()
 	myAddr = addrs[0] + strings.Replace(myAddr, "[::]", "", -1) //add port to address
 	fmt.Println("My address: " + myAddr)
-	circle.AddPeer(myAddr) //Adds self to Circle
+	fmt.Println("my id: " + myID)
+	circle.AddPeer(myAddr, myPublicKey) //Adds self to Circle
 	if conn != nil {
 		//address responds
 		dns.AddConnection(conn)
