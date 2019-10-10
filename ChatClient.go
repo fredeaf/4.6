@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/gob"
 	"fmt"
@@ -42,15 +43,13 @@ func broadcast(pack *Package) {
 
 func handleConnection(conn net.Conn) {
 	defer dns.RemoveConnection(conn)
+	defer circle.RemovePeer(conn.RemoteAddr().String())
 	defer conn.Close()
-	otherEnd := conn.RemoteAddr().String() //Find address of connection
 	for {
 		pack := &Package{}
 		dec := gob.NewDecoder(conn)
 		err := dec.Decode(pack)
 		if err != nil {
-			fmt.Println(err)
-			fmt.Println("Ending session with " + otherEnd)
 			return
 		}
 		interpret(pack)
@@ -68,7 +67,7 @@ func interpret(pack *Package) {
 				ledger.Transaction(pack.Transaction) // Ledger is updated with new transaction
 				fmt.Println("Ledger updated: ")
 				ledger.PrintLedger() //Updated ledger is printed
-				fmt.Println("Please input to choose an action: 1 for new transaction, 2 to show ledger ")
+				fmt.Println("Please input to choose an action: 1 for new transaction, 2 to show ledger, 3 print Uuid ")
 				broadcast(pack) //Package is sent onward
 			}
 		}
@@ -84,30 +83,26 @@ func interpret(pack *Package) {
 			}
 		}
 	}
+	if pack.KeyStore != nil {
+		keyStore = pack.KeyStore
+	}
 	if pack.Address != "" {
-		newPupId, err := x509.ParsePKCS1PublicKey([]byte(pack.key))
-		keyStore.AddKey(pack.uuid, newPupId)
+		keyStore.AddKey(pack.Uuid, pack.Key)
+		circle.AddPeer(pack.Address)
 		if pack.NewComer {
 			conn, _ := net.Dial("tcp", pack.Address)
 			if conn != nil {
 				enc := gob.NewEncoder(conn)
 				initialPack := new(Package)
+				initialPack.Circle = circle
+				initialPack.KeyStore = keyStore
+				err := enc.Encode(initialPack) //send circle to new peer
 				if err != nil {
+					fmt.Println("initialPack encode error:")
 					fmt.Println(err)
 				}
-				circle.AddPeer(pack.Address)
-				initialPack.Circle = circle
-				initialPack.keyStore = keyStore
-				enc.Encode(initialPack) //send circle to new peer
 			}
 		}
-		circle.AddPeer(pack.Address)
-		key, err := x509.ParsePKCS1PublicKey([]byte(pack.key))
-		if err != nil {
-			fmt.Println(err)
-		}
-		keyStore.AddKey(pack.uuid, key)
-
 	}
 }
 
@@ -123,7 +118,7 @@ func listenForConnections(ln net.Listener) {
 func takeInputFromUser() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Println("Please input to choose an action: 1 for new transaction, 2 to show ledger ")
+		fmt.Println("Please input to choose an action: 1 for new transaction, 2 to show ledger, 3 print Uuid ")
 		ress, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("Input error, try again")
@@ -131,7 +126,7 @@ func takeInputFromUser() {
 			switch ress {
 			case "1\n":
 				{
-					fmt.Println("Please input uuid of receiver:")
+					fmt.Println("Please input Uuid of receiver:")
 					to, err := reader.ReadString('\n')
 					fmt.Println("Please input amount:")
 					amountString, err := reader.ReadString('\n')
@@ -140,20 +135,25 @@ func takeInputFromUser() {
 					amountString = strings.Replace(amountString, "\n", "", -1)
 					amount, err := strconv.Atoi(amountString)
 					if err != nil {
-						fmt.Println("Error! try again")
+						fmt.Println("Error! Amount needs to be integers")
 					} else {
-						fmt.Println(to)
-						fmt.Println(circle.Peers)
-						toKey := string(x509.MarshalPKCS1PublicKey(keyStore.GetKey(to)))
-						signedVal := from + toKey + strconv.Itoa(amount)
-						signature, err := rsa.SignPKCS1v15(rand.Reader, myPrivateKey, crypto.SHA256, []byte(signedVal))
-						if err != nil {
-							fmt.Println(err)
+						toKey := keyStore.GetKey(to)
+						if toKey != "" {
+							signedVal := from + toKey + strconv.Itoa(amount)
+							hashedSVal := sha256.Sum256([]byte(signedVal))
+							signature, err := rsa.SignPKCS1v15(rand.Reader, myPrivateKey, crypto.SHA256, hashedSVal[:])
+							if err != nil {
+								fmt.Println("Signature creation error:")
+								fmt.Println(err)
+							}
+							transaction := createTransaction(myID, from, toKey, amount, string(signature))
+							newPackage := packTransaction(transaction)
+							ledger.Transaction(transaction)
+							go broadcast(newPackage)
+						} else {
+							fmt.Println("Unknown Uuid")
 						}
-						transaction := createTransaction(myID, string(x509.MarshalPKCS1PublicKey(myPublicKey)), toKey, amount, string(signature))
-						newPackage := packTransaction(transaction)
-						ledger.Transaction(transaction)
-						go broadcast(newPackage)
+
 					}
 				}
 			case "2\n":
@@ -163,17 +163,28 @@ func takeInputFromUser() {
 				}
 			case "3\n":
 				{
+					fmt.Println("My Uuid:" + string(x509.MarshalPKCS1PublicKey(myPublicKey)))
+				}
+			case "4\n":
+				{
 					fmt.Println("test:")
 					for _, p := range circle.Peers {
 						fmt.Println(p)
 
 					}
 				}
-			case "4\n":
+			case "5\n":
 				{
 					fmt.Println("dns test")
 					for _, x := range dns.m {
 						fmt.Println(x.RemoteAddr().String())
+					}
+				}
+			case "6\n":
+				{
+					fmt.Println("KeyStore test")
+					for x, _ := range keyStore.KeyMap {
+						fmt.Println(x)
 					}
 				}
 
@@ -192,6 +203,7 @@ func main() {
 	myID = uuid.UUID.String(newID)
 	myPrivateKey, err = rsa.GenerateKey(rand.Reader, 3000)
 	if err != nil {
+		fmt.Println("Keygen error:")
 		fmt.Println(err)
 	}
 	myPublicKey = &myPrivateKey.PublicKey
@@ -200,10 +212,12 @@ func main() {
 	gob.Register(Circle{})
 	gob.Register(SignedTransaction{})
 	gob.Register(KeyStore{})
+	gob.Register(rsa.PublicKey{})
 	var reader = bufio.NewReader(os.Stdin) //Create reader to get user input
 	fmt.Println("Please input an IP address and port number of known network member")
 	address, err := reader.ReadString('\n') //Reads input
 	if err != nil {
+		fmt.Println("Read input error:")
 		fmt.Println(err)
 		return
 	}
@@ -226,12 +240,17 @@ func main() {
 		enc := gob.NewEncoder(conn)
 		joinReq.Address = myAddr
 		joinReq.NewComer = true
-		joinReq.key = string(x509.MarshalPKCS1PublicKey(myPublicKey))
-		joinReq.uuid = myID
-		enc.Encode(joinReq)
+		joinReq.Key = string(x509.MarshalPKCS1PublicKey(myPublicKey))
+		joinReq.Uuid = myID
+		err := enc.Encode(joinReq)
+		if err != nil {
+			fmt.Println("Encode joinReq error:")
+			fmt.Println(err)
+		}
 		takeInputFromUser()
 	} else {
 		//address not responding
+		keyStore.AddKey(myID, string(x509.MarshalPKCS1PublicKey(myPublicKey)))
 		go listenForConnections(ln)
 		takeInputFromUser()
 	}

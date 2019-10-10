@@ -20,6 +20,6 @@ func (Ledger Ledger) PrintLedger() {
 	ledger.lock.Lock()
 	defer ledger.lock.Unlock()
 	for name, amount := range ledger.Accounts {
-		fmt.Println(name + ": " + strconv.Itoa(amount))
+		fmt.Println(keyStore.GetUuid(name) + ": " + strconv.Itoa(amount))
 	}
 }

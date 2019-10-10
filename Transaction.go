@@ -3,6 +3,7 @@ package main
 import (
 	"crypto"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"fmt"
 	"strconv"
@@ -22,18 +23,20 @@ func (l *Ledger) Transaction(t *SignedTransaction) {
 
 	/* We verify that the t.Signature is a valid RSA
 	* signature on the rest of the fields in t under
-	* the public key t.From.
+	* the public Key t.From.
 	 */
 
 	validSignature := true
-	pupId, err := x509.ParsePKCS1PublicKey([]byte(t.From))
+	pubKey, err := x509.ParsePKCS1PublicKey([]byte(t.From))
 	if err != nil {
 		fmt.Println(err)
 	}
 	signedVal := t.From + t.To + strconv.Itoa(t.Amount)
-	err = rsa.VerifyPKCS1v15(pupId, crypto.SHA256, []byte(signedVal), []byte(t.Signature))
+	hashedSVal := sha256.Sum256([]byte(signedVal))
+	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashedSVal[:], []byte(t.Signature))
 
 	if err != nil {
+		fmt.Println("signature didnt verify")
 		validSignature = false
 	}
 

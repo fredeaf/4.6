@@ -1,37 +1,44 @@
 package main
 
 import (
-	"crypto/rsa"
 	"sync"
 )
 
 //keystore : structure containing public keys of network members
 type KeyStore struct {
-	keyMap map[string]*rsa.PublicKey
+	KeyMap map[string]string
 	lock   sync.Mutex
 }
 
 //MakeStore : KeyStore initiator
 func MakeStore() *KeyStore {
 	store := new(KeyStore)
-	store.keyMap = make(map[string]*rsa.PublicKey)
+	store.KeyMap = make(map[string]string)
 	return store
 }
 
-//AddKey : adds a key to the store
-func (store KeyStore) AddKey(uuid string, key *rsa.PublicKey) {
+//AddKey : adds a Key to the store
+func (store KeyStore) AddKey(uuid string, key string) {
 	store.lock.Lock()
 	defer store.lock.Unlock()
-	store.keyMap[uuid] = key
+	store.KeyMap[uuid] = key
 }
 
-//GetKey : returns the key of user with supplied uuid
-func (store KeyStore) GetKey(uuid string) *rsa.PublicKey {
-	var pubKey *rsa.PublicKey
+//GetKey : returns the Key of user with supplied Uuid
+func (store KeyStore) GetKey(uuid string) string {
+	store.lock.Lock()
+	return store.KeyMap[uuid]
+}
+
+//GetUuid : returns the id of user with supplied key
+func (store KeyStore) GetUuid(key string) (uuid string) {
 	store.lock.Lock()
 	defer store.lock.Unlock()
-	if key, found := store.keyMap[uuid]; found {
-		pubKey = key
+	for id, k := range store.KeyMap {
+		if k == key {
+			uuid = id
+			return
+		}
 	}
-	return pubKey
+	return
 }

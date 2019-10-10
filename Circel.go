@@ -93,8 +93,8 @@ func (circle *Circle) Announce(addr string, uuid string, pubKey string) {
 	defer circle.lock.Unlock()
 	pack := new(Package)
 	pack.Address = addr
-	pack.key = pubKey
-	pack.uuid = uuid
+	pack.Key = pubKey
+	pack.Uuid = uuid
 	for _, p := range circle.Peers {
 		if p != addr {
 			sendAddr(pack, p)
