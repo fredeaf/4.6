@@ -59,11 +59,11 @@ func handleConnection(conn net.Conn) {
 //Interpret : function for checking the contents of received packages
 func interpret(pack *Package) {
 	if pack.Transaction != nil {
-		if pack.Transaction.ID != myID {
+		if pack.Uuid != myID {
 			tClock.lock.Lock()
 			defer tClock.lock.Unlock()
-			if checkClock(pack.Transaction.ID, pack.Number) { //checks if transaction is new
-				setClock(pack.Transaction.ID, pack.Number)
+			if checkClock(pack.Transaction.ID, pack.Uuid) { //checks if transaction is new
+				setClock(pack.Transaction.ID, pack.Uuid)
 				ledger.Transaction(pack.Transaction) // Ledger is updated with new transaction
 				fmt.Println("Ledger updated: ")
 				ledger.PrintLedger() //Updated ledger is printed
@@ -119,11 +119,11 @@ func takeInputFromUser() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Println("Please input to choose an action: 1 for new transaction, 2 to show ledger, 3 print Uuid ")
-		ress, err := reader.ReadString('\n')
+		input, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("Input error, try again")
 		} else {
-			switch ress {
+			switch input {
 			case "1\n":
 				{
 					fmt.Println("Please input Uuid of receiver:")
@@ -135,21 +135,25 @@ func takeInputFromUser() {
 					amountString = strings.Replace(amountString, "\n", "", -1)
 					amount, err := strconv.Atoi(amountString)
 					if err != nil {
-						fmt.Println("Error! Amount needs to be integers")
+						fmt.Println("Error! Amount needs to be an integer")
+					} else if amount <= 0 {
+						fmt.Println("Error! Amount needs to be positive")
 					} else {
 						toKey := keyStore.GetKey(to)
 						if toKey != "" {
-							signedVal := from + toKey + strconv.Itoa(amount)
-							hashedSVal := sha256.Sum256([]byte(signedVal))
-							signature, err := rsa.SignPKCS1v15(rand.Reader, myPrivateKey, crypto.SHA256, hashedSVal[:])
+							signedVal := strconv.Itoa(packagesSent) + from + toKey + strconv.Itoa(amount)               //transaction info to be signed
+							hashedSVal := sha256.Sum256([]byte(signedVal))                                              //hashed transaction info
+							signature, err := rsa.SignPKCS1v15(rand.Reader, myPrivateKey, crypto.SHA256, hashedSVal[:]) //signing hashed transaction info
 							if err != nil {
 								fmt.Println("Signature creation error:")
 								fmt.Println(err)
 							}
-							transaction := createTransaction(myID, from, toKey, amount, string(signature))
-							newPackage := packTransaction(transaction)
-							ledger.Transaction(transaction)
-							go broadcast(newPackage)
+							transaction := createTransaction(strconv.Itoa(packagesSent), from, toKey, amount, string(signature)) //creating transaction obj
+							newPackage := packTransaction(transaction)                                                           //creating package with transaction
+							ledger.Transaction(transaction)                                                                      //updating own ledger
+							newPackage.Uuid = myID                                                                               //adding uuid to package
+							go broadcast(newPackage)                                                                             //broadcasting package to network
+							packagesSent++
 						} else {
 							fmt.Println("Unknown Uuid")
 						}
@@ -163,7 +167,7 @@ func takeInputFromUser() {
 				}
 			case "3\n":
 				{
-					fmt.Println("My Uuid:" + string(x509.MarshalPKCS1PublicKey(myPublicKey)))
+					fmt.Println("My Uuid:" + myID)
 				}
 			case "4\n":
 				{
@@ -183,7 +187,7 @@ func takeInputFromUser() {
 			case "6\n":
 				{
 					fmt.Println("KeyStore test")
-					for x, _ := range keyStore.KeyMap {
+					for x := range keyStore.KeyMap {
 						fmt.Println(x)
 					}
 				}
@@ -208,11 +212,10 @@ func main() {
 	}
 	myPublicKey = &myPrivateKey.PublicKey
 	tClock = MakeClock()
-	gob.Register(Package{})
+	gob.Register(Package{}) //registering objects for gob en/decoding
 	gob.Register(Circle{})
 	gob.Register(SignedTransaction{})
 	gob.Register(KeyStore{})
-	gob.Register(rsa.PublicKey{})
 	var reader = bufio.NewReader(os.Stdin) //Create reader to get user input
 	fmt.Println("Please input an IP address and port number of known network member")
 	address, err := reader.ReadString('\n') //Reads input
@@ -227,12 +230,22 @@ func main() {
 	addrs, _ := net.LookupHost(name)                          //Find own address
 	ln, _ := net.Listen("tcp", "")                            //Listen for incoming connections
 	myAddr = ln.Addr().String()
-	myAddr = addrs[0] + strings.Replace(myAddr, "[::]", "", -1) //add port to address
+	for i, a := range addrs { //logic for getting ipv4 address
+		chopped := strings.Split(a, ".")
+		if len(chopped) == 4 {
+			if firstVal, err := strconv.Atoi(chopped[0]); err == nil {
+				if firstVal != 127 {
+					myAddr = addrs[i] + strings.Replace(myAddr, "[::]", "", -1) //add port to address
+				}
+			}
+		}
+	}
 	fmt.Println("My address: " + myAddr)
 	fmt.Println("my id: " + myID)
 	circle.AddPeer(myAddr) //Adds self to Circle
 	if conn != nil {
 		//address responds
+		fmt.Println("got response, joining network")
 		dns.AddConnection(conn)
 		go handleConnection(conn)
 		go listenForConnections(ln)
@@ -250,8 +263,10 @@ func main() {
 		takeInputFromUser()
 	} else {
 		//address not responding
+		fmt.Println("no response, starting new network")
 		keyStore.AddKey(myID, string(x509.MarshalPKCS1PublicKey(myPublicKey)))
 		go listenForConnections(ln)
 		takeInputFromUser()
 	}
+
 }

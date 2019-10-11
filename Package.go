@@ -2,7 +2,6 @@ package main
 
 //Package : a container for Transactions with a counter
 type Package struct {
-	Number      int
 	Transaction *SignedTransaction
 	Uuid        string
 	Address     string
@@ -14,9 +13,7 @@ type Package struct {
 
 //packTransaction : packages Transactions with a package myID
 func packTransaction(transaction *SignedTransaction) *Package {
-	packagesSent++
 	pack := new(Package)
-	pack.Number = packagesSent
 	pack.Transaction = transaction
 	return pack
 }

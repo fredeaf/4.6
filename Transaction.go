@@ -31,7 +31,7 @@ func (l *Ledger) Transaction(t *SignedTransaction) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	signedVal := t.From + t.To + strconv.Itoa(t.Amount)
+	signedVal := t.ID + t.From + t.To + strconv.Itoa(t.Amount)
 	hashedSVal := sha256.Sum256([]byte(signedVal))
 	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashedSVal[:], []byte(t.Signature))
 

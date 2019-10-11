@@ -2,26 +2,26 @@ package main
 
 import "sync"
 
-//Clock : structure counting received transactions
+//Clock : structure registering received transactions
 type Clock struct {
-	m    map[string][]int
+	m    map[string][]string
 	lock sync.Mutex
 }
 
 //MakeClock : Clock initiator
 func MakeClock() *Clock {
 	clock := new(Clock)
-	clock.m = make(map[string][]int)
+	clock.m = make(map[string][]string)
 	return clock
 }
 
 //setClock : increments Clock
-func setClock(id string, packageNumber int) {
+func setClock(id string, packageNumber string) {
 	tClock.m[id] = append(tClock.m[id], packageNumber)
 }
 
-//checkClock : Checks if a packageNumber has been received from an myID before
-func checkClock(id string, packageNumber int) bool {
+//checkClock : Checks if a packageNumber is new
+func checkClock(id string, packageNumber string) bool {
 	if contains(tClock.m[id], packageNumber) { //Checks if packageNumber was seen
 		return false
 	} else {
@@ -30,7 +30,7 @@ func checkClock(id string, packageNumber int) bool {
 }
 
 //logic for checkClock
-func contains(c []int, n int) bool {
+func contains(c []string, n string) bool {
 	for _, x := range c {
 		if x == n {
 			return true
