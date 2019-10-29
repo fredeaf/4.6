@@ -60,15 +60,17 @@ func handleConnection(conn net.Conn) {
 func interpret(pack *Package) {
 	if pack.Transaction != nil {
 		if pack.Uuid != myID {
-			tClock.lock.Lock()
-			defer tClock.lock.Unlock()
-			if checkClock(pack.Transaction.ID, pack.Uuid) { //checks if transaction is new
-				setClock(pack.Transaction.ID, pack.Uuid)
-				ledger.Transaction(pack.Transaction) // Ledger is updated with new transaction
-				fmt.Println("Ledger updated: ")
-				ledger.PrintLedger() //Updated ledger is printed
-				fmt.Println("Please input to choose an action: 1 for new transaction, 2 to show ledger, 3 print Uuid ")
-				broadcast(pack) //Package is sent onward
+			if pack.Transaction.Amount > 0 {
+				tClock.lock.Lock()
+				defer tClock.lock.Unlock()
+				if checkClock(pack.Transaction.ID, pack.Uuid) { //checks if transaction is new
+					setClock(pack.Transaction.ID, pack.Uuid)
+					ledger.Transaction(pack.Transaction) // Ledger is updated with new transaction
+					fmt.Println("Ledger updated: ")
+					ledger.PrintLedger() //Updated ledger is printed
+					fmt.Println("Please input to choose an action: 1 for new transaction, 2 to show ledger, 3 print Uuid ")
+					broadcast(pack) //Package is sent onward
+				}
 			}
 		}
 	}
