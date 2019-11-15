@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/gob"
 	"fmt"
+	"image/draw"
 	"io"
 	"io/ioutil"
 	"log"
@@ -49,16 +50,28 @@ type Sequencer struct {
 /*Block skal indenholde:
 slot
 TransactionList
-Draw ()
+Draw: Sign(LOTTERY,slot)
 VK/PK key fra vinder
 predecessor: Hash
 signature (injective encoded(json))
 */
 
 type Block struct {
-	ID            int
-	TransactionID []string
-	Signature     string
+	Slot            int
+	TransactionList []string
+	Draw            string
+	Key             string
+	Predecessor     crypto.Hash
+	Signature       string
+}
+
+var GenesisBlock = Block{
+	Slot:            0,
+	TransactionList: nil,
+	Draw:            "",
+	Key:             "",
+	Predecessor:     0,
+	Signature:       "",
 }
 
 func broadcast(pack *Package) {
