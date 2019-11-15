@@ -97,7 +97,7 @@ func generateInitialLedger() Ledger {
 	file, _ := os.Create("KeyFile")
 	for i := 0; i < 10; i++ {
 		var privatekey, _ = rsa.GenerateKey(rand.Reader, 3000)
-		_, _ := io.WriteString(file, string(x509.MarshalPKCS1PrivateKey(privatekey))+",")
+		_, _ = io.WriteString(file, string(x509.MarshalPKCS1PrivateKey(privatekey))+",")
 		ledger.Accounts[string(x509.MarshalPKCS1PublicKey(&privatekey.PublicKey))] = 10 ^ 6
 	}
 	return ledger
