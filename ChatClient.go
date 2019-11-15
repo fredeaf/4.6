@@ -40,6 +40,7 @@ var processingTransactions []SignedTransaction
 var amount int
 var blockRecieved bool
 var blockNumber int
+var slotLength = 1
 
 type Sequencer struct {
 	IP        string
@@ -121,7 +122,7 @@ func checkDraw(draw []byte) bool {
 
 func calcSlot(start time.Time) int {
 	seconds := int(time.Since(start) / time.Second)
-	return seconds / 10 //10 seconds per slot
+	return seconds / slotLength //10 seconds per slot
 }
 
 func broadcast(pack *Package) {
@@ -150,6 +151,11 @@ func handleConnection(conn net.Conn) {
 		}
 		interpret(pack)
 	}
+}
+
+func checkTransList(transactions []string) bool {
+	//TODO:check transactions, return false if not valid
+	return true
 }
 
 //Interpret : function for checking the contents of received packages
@@ -186,29 +192,37 @@ func interpret(pack *Package) {
 				fmt.Println(err)
 			} else {
 				//handle block
+				if len(pack.Block.TransactionList) > 0 {
+					if checkTransList(pack.Block.TransactionList) {
+						GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10 +
+							len(pack.Block.TransactionList)
+						//add block to tree ?
+					}
+				} else {
+					GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10
+				}
 			}
-
 		}
 	}
 
 	/*
-		if blockVerify(*pack) == true {
-			if blockRecieved == false {
-				blockNumber = pack.Block.ID
-				blocks = append(blocks, pack.Block.TransactionID[:]...)
-				blockRecieved = true
-			} else {
-				if blockNumber == pack.Block.ID {
-					blockNumber = blockNumber + 1
-					for {
-						blocks = append(blocks, pack.Block.TransactionID[:]...)
-					}
+			if blockVerify(*pack) == true {
+				if blockRecieved == false {
+	|				blockNumber = pack.Block.ID
+					blocks = append(blocks, pack.Block.TransactionID[:]...)
+					blockRecieved = true
 				} else {
-					time.Sleep(time.Second)
+					if blockNumber == pack.Block.ID {
+						blockNumber = blockNumber + 1
+						for {
+							blocks = append(blocks, pack.Block.TransactionID[:]...)
+						}
+					} else {
+						time.Sleep(time.Second)
+					}
 				}
 			}
-		}
-	}*/
+		}*/
 	if pack.Circle != nil {
 		circle = pack.Circle                                                           //Circle is updated
 		circle.Announce(myAddr, myID, string(x509.MarshalPKCS1PublicKey(myPublicKey))) //Announces presence to all other peers

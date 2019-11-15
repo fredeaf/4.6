@@ -42,7 +42,7 @@ func (l *Ledger) Transaction(t *SignedTransaction) {
 
 	if validSignature {
 		l.Accounts[t.From] -= t.Amount
-		l.Accounts[t.To] += t.Amount
+		l.Accounts[t.To] += t.Amount - 1
 	}
 }
 
