@@ -69,6 +69,7 @@ type GenBlock struct {
 	Seed          string
 	Hardness      int
 	initialLedger Ledger
+	StartTime     time.Time
 }
 
 type BlockTree struct {
@@ -82,6 +83,7 @@ var GenesisBlock = GenBlock{
 	Seed:          "RandomSeed",
 	Hardness:      42,
 	initialLedger: generateInitialLedger(),
+	StartTime:     time.Now(), //TODO: set time??
 }
 
 var BT = BlockTree{
@@ -98,6 +100,26 @@ func generateInitialLedger() Ledger {
 		ledger.Accounts[string(x509.MarshalPKCS1PublicKey(&privatekey.PublicKey))] = 10 ^ 6
 	}
 	return ledger
+}
+
+func draw(slot int) []byte {
+	signedVal := "LOTTERY" + GenesisBlock.Seed + strconv.Itoa(slot) //TODO: injective encode
+	hashedSVal := sha256.Sum256([]byte(signedVal))
+	draw, _ := rsa.SignPKCS1v15(rand.Reader, myPrivateKey, crypto.SHA256, hashedSVal[:])
+	return draw
+}
+
+func checkDraw(draw []byte) bool {
+	for i := 0; i < GenesisBlock.Hardness; i++ {
+		if draw[i] != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func calcSlot(start time.Time) int64 {
+	return (time.Since(start)).Nanoseconds() / 1e+10 //10 seconds per slot
 }
 
 func broadcast(pack *Package) {
