@@ -3,18 +3,25 @@ package main
 import (
 	"bufio"
 	"crypto"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/gob"
 	"fmt"
-	"github.com/google/uuid"
+	"io"
+	"io/ioutil"
+	"log"
+	"math/big"
 	"net"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var dns = MakeDNS()
@@ -27,6 +34,32 @@ var myAddr string
 var myPrivateKey *rsa.PrivateKey
 var myPublicKey *rsa.PublicKey
 var keyStore = MakeStore()
+var sequencer Sequencer
+var blocks []string
+var processingTransactions []SignedTransaction
+var amount int
+var blockRecieved bool
+var blockNumber int
+
+type Sequencer struct {
+	IP        string
+	PublicKey string
+}
+
+/*Block skal indenholde:
+slot
+TransactionList
+Draw ()
+VK/PK key fra vinder
+predecessor: Hash
+signature (injective encoded(json))
+*/
+
+type Block struct {
+	ID            int
+	TransactionID []string
+	Signature     string
+}
 
 func broadcast(pack *Package) {
 	dns.lock.Lock()
@@ -59,17 +92,40 @@ func handleConnection(conn net.Conn) {
 //Interpret : function for checking the contents of received packages
 func interpret(pack *Package) {
 	if pack.Transaction != nil {
-		if pack.Uuid != myID {
+		if pack.UUID != myID {
 			if pack.Transaction.Amount > 0 {
 				tClock.lock.Lock()
 				defer tClock.lock.Unlock()
-				if checkClock(pack.Transaction.ID, pack.Uuid) { //checks if transaction is new
-					setClock(pack.Transaction.ID, pack.Uuid)
-					ledger.Transaction(pack.Transaction) // Ledger is updated with new transaction
-					fmt.Println("Ledger updated: ")
-					ledger.PrintLedger() //Updated ledger is printed
+				if checkClock(pack.Transaction.ID, pack.UUID) { //checks if transaction is new
+					setClock(pack.Transaction.ID, pack.UUID)
+					processingTransactions = append(processingTransactions, *pack.Transaction)
+					//ledger.Transaction(pack.Transaction) // Ledger is updated with new transaction
+					//fmt.Println("Ledger updated: ")
+					//ledger.PrintLedger() //Updated ledger is printed
 					fmt.Println("Please input to choose an action: 1 for new transaction, 2 to show ledger, 3 print Uuid ")
 					broadcast(pack) //Package is sent onward
+				}
+			}
+		}
+	}
+	if pack.Sequencer.IP != "" {
+		sequencer.IP = pack.Sequencer.IP
+		sequencer.PublicKey = pack.Sequencer.PublicKey
+	}
+	if pack.Block.Signature != "" {
+		if blockVerify(*pack) == true {
+			if blockRecieved == false {
+				blockNumber = pack.Block.ID
+				blocks = append(blocks, pack.Block.TransactionID[:]...)
+				blockRecieved = true
+			} else {
+				if blockNumber == pack.Block.ID {
+					blockNumber = blockNumber + 1
+					for {
+						blocks = append(blocks, pack.Block.TransactionID[:]...)
+					}
+				} else {
+					time.Sleep(time.Second)
 				}
 			}
 		}
@@ -89,7 +145,7 @@ func interpret(pack *Package) {
 		keyStore = pack.KeyStore
 	}
 	if pack.Address != "" {
-		keyStore.AddKey(pack.Uuid, pack.Key)
+		keyStore.AddKey(pack.UUID, pack.Key)
 		circle.AddPeer(pack.Address)
 		if pack.NewComer {
 			conn, _ := net.Dial("tcp", pack.Address)
@@ -153,7 +209,7 @@ func takeInputFromUser() {
 							transaction := createTransaction(strconv.Itoa(packagesSent), from, toKey, amount, string(signature)) //creating transaction obj
 							newPackage := packTransaction(transaction)                                                           //creating package with transaction
 							ledger.Transaction(transaction)                                                                      //updating own ledger
-							newPackage.Uuid = myID                                                                               //adding uuid to package
+							newPackage.UUID = myID                                                                               //adding uuid to package
 							go broadcast(newPackage)                                                                             //broadcasting package to network
 							packagesSent++
 						} else {
@@ -256,7 +312,7 @@ func main() {
 		joinReq.Address = myAddr
 		joinReq.NewComer = true
 		joinReq.Key = string(x509.MarshalPKCS1PublicKey(myPublicKey))
-		joinReq.Uuid = myID
+		joinReq.UUID = myID
 		err := enc.Encode(joinReq)
 		if err != nil {
 			fmt.Println("Encode joinReq error:")
@@ -271,4 +327,228 @@ func main() {
 		takeInputFromUser()
 	}
 
+}
+
+func sendSequencer() {
+	pack := packSequencer(&sequencer)
+	broadcast(pack)
+}
+
+func createSequencer() {
+	sequencerPublicKey := Generate("sequencerfileforkey", "SequencersKodeordSomIkkeSkalVære32bytes")
+	sequencer.IP = myAddr
+	sequencer.PublicKey = sequencerPublicKey
+}
+
+func runSequencer() {
+	c := 0
+	for {
+		time.Sleep(10 * time.Second)
+		var blocks []string
+		var p Package
+		for _, transaction := range processingTransactions {
+			blocks = append(blocks, transaction.ID)
+		}
+		p.Block.ID = c
+		p.Block.TransactionID = blocks
+
+		signing := strconv.Itoa(c) + "" + strings.Join(blocks, "")
+		p.Block.Signature = Sign("sequencerfileforkey", "SequencersKodeordSomIkkeSkalVære32bytes", []byte(signing))
+		c = c + 1
+		broadcast(&p)
+	}
+}
+
+func receivingTransactions() {
+	for {
+		a := blocks[0]
+		for t, transaction := range processingTransactions {
+			if a == transaction.ID {
+				ledger.Transaction(&transaction)
+				blocks = blocks[1:]
+				processingTransactions = append(processingTransactions[:t], processingTransactions[t+1:]...)
+			} else {
+				time.Sleep(time.Second)
+			}
+		}
+	}
+}
+
+func blockVerify(pack Package) bool {
+	packToString := strconv.Itoa(pack.Block.ID) + strings.Join(pack.Block.TransactionID, "")
+	stringToBigInt := new(big.Int).SetBytes([]byte(packToString))
+	h := sha256.Sum256(stringToBigInt.Bytes())
+	x := h[:]
+	hashToBigInt := big.NewInt(0).SetBytes(x)
+	bigIntToString := hashToBigInt.String()
+
+	neString := strings.Split(sequencer.PublicKey, ";")
+	n, _ := new(big.Int).SetString(neString[0], 10)
+	e, _ := new(big.Int).SetString(neString[1], 10)
+
+	signatureBig, _ := new(big.Int).SetString(pack.Block.Signature, 10)
+	decryptSignature := decrypt(signatureBig, e, n).String()
+	if decryptSignature == bigIntToString {
+		return true
+	}
+	return false
+}
+
+// Encrypting a plaintext, with the given key and iv.
+// After encrypting the text it writes the encryption to Encryptedfile.enc
+// which is a new file who just got created. After writing to the file,
+// the function prints out a print statement.
+func EncryptToFile(key string, plaintext string, fileName string) {
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		fmt.Println(err)
+	}
+	cipherText := make([]byte, aes.BlockSize+len(plaintext))
+	iv := cipherText[:aes.BlockSize]
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		panic(err)
+	}
+	fmt.Println("iv,block")
+	fmt.Println(len(iv))
+	fmt.Println(block.BlockSize())
+	stream := cipher.NewCTR(block, iv)
+	stream.XORKeyStream(cipherText[aes.BlockSize:], []byte(plaintext))
+
+	err = ioutil.WriteFile(fmt.Sprintf(fileName), cipherText, 0644)
+	if err != nil {
+		log.Fatalf("Writing encryption file: %s", err)
+	} else {
+		fmt.Printf("Message encrypted in file: %s\n\n", fileName)
+	}
+}
+
+// Decrypting the file created by encrypt, with the given key and iv.
+// After loading the encrypted file, the function decrypts the file,
+// and returns the deciphered text
+
+func DecryptFromFile(key string, fileName string) []byte {
+	cipherText, _ := ioutil.ReadFile(fmt.Sprintf(fileName))
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		fmt.Println(err)
+	}
+	iv := cipherText[:aes.BlockSize]
+	cipherText = cipherText[aes.BlockSize:]
+
+	mode := cipher.NewCTR(block, iv)
+	mode.XORKeyStream(cipherText, cipherText)
+
+	return cipherText
+}
+
+func KeyGen(keyLength int) (n *big.Int, e *big.Int, d *big.Int) {
+	for {
+		n = new(big.Int)
+		e = big.NewInt(3)
+		d = new(big.Int)
+		if keyLength <= 3 {
+			fmt.Println("Error: key length needs to be at least 4")
+			return
+		}
+
+		p, err := rand.Prime(rand.Reader, keyLength/2)
+		if err != nil {
+			fmt.Println("error creating primes:")
+			fmt.Println(err)
+		}
+		q, err := rand.Prime(rand.Reader, keyLength/2)
+		if err != nil {
+			fmt.Println("error creating primes:")
+			fmt.Println(err)
+		}
+
+		//calculate n
+		n.Set(p)
+		n.Mul(n, q)
+		if n.BitLen() != keyLength {
+			continue
+		}
+
+		//calculate d
+		q.Sub(q, big.NewInt(1))
+		p.Sub(p, big.NewInt(1))
+
+		product := new(big.Int)
+		product = product.Mul(q, p)
+		//d.Mod(temp, product)
+
+		d = d.ModInverse(e, product)
+
+		if d == nil {
+			continue
+		}
+		//return
+		return n, e, d
+	}
+
+}
+
+func encrypt(m *big.Int, e *big.Int, n *big.Int) *big.Int {
+	c := new(big.Int)
+	//m^e mod n
+	c = c.Exp(m, e, n)
+	return c
+}
+
+func decrypt(c *big.Int, d *big.Int, n *big.Int) *big.Int {
+	m := new(big.Int)
+	//c^d mod n
+	m = m.Exp(c, d, n)
+	return m
+}
+
+func sign(d *big.Int, n *big.Int, m *big.Int) *big.Int {
+	h := sha256.New()
+	//h(m)
+	h.Write(m.Bytes())
+	b := new(big.Int)
+	b.SetBytes(h.Sum(nil))
+	//h(m)^d mod n
+	signature := b.Exp(b, d, n)
+	return signature
+}
+
+func verify(e *big.Int, n *big.Int, m *big.Int, s *big.Int) bool {
+	b := new(big.Int)
+	res := new(big.Int)
+	//s^e mod n
+	res.Exp(s, e, n)
+
+	h := sha256.New()
+	//h(m)
+	h.Write(m.Bytes())
+	b.SetBytes(h.Sum(nil))
+	fmt.Println("res and s:")
+	fmt.Println(res)
+	fmt.Println(b)
+	if b.Cmp(res) == 0 {
+		return true
+	}
+	return false
+}
+
+// Generates a secret and public key, returns the public key and saves the secret key
+// in a encrypted file.
+func Generate(filename string, password string) string {
+	n, e, d := KeyGen(2050)
+	publicKey := n.String() + ";" + d.String()
+	secretKey := n.String() + ";" + e.String()
+	EncryptToFile(password, secretKey, filename)
+	return publicKey
+}
+
+// Decrypts the message and signs it, returns the signature.
+func Sign(filename string, password string, msg []byte) string {
+	secretKey := string(DecryptFromFile(password, filename))
+	ndString := strings.Split(secretKey, ";")
+	n, _ := new(big.Int).SetString(ndString[0], 10)
+	d, _ := new(big.Int).SetString(ndString[1], 10)
+	msgBI := new(big.Int).SetBytes(msg)
+	signature := sign(d, n, msgBI).String()
+	return signature
 }
