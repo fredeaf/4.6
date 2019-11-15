@@ -191,38 +191,40 @@ func interpret(pack *Package) {
 				fmt.Println("error verifying block:")
 				fmt.Println(err)
 			} else {
-				//handle block
-				if len(pack.Block.TransactionList) > 0 {
-					if checkTransList(pack.Block.TransactionList) {
-						GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10 +
-							len(pack.Block.TransactionList)
-						//add block to tree ?
+				if checkDraw([]byte(pack.Block.Draw)) {
+					//handle block
+					if len(pack.Block.TransactionList) > 0 {
+						if checkTransList(pack.Block.TransactionList) {
+							GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10 +
+								len(pack.Block.TransactionList)
+							//add block to tree ?
+						}
+					} else {
+						GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10
 					}
-				} else {
-					GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10
 				}
 			}
 		}
 	}
 
 	/*
-			if blockVerify(*pack) == true {
-				if blockRecieved == false {
-	|				blockNumber = pack.Block.ID
-					blocks = append(blocks, pack.Block.TransactionID[:]...)
-					blockRecieved = true
-				} else {
-					if blockNumber == pack.Block.ID {
-						blockNumber = blockNumber + 1
-						for {
-							blocks = append(blocks, pack.Block.TransactionID[:]...)
-						}
+				if blockVerify(*pack) == true {
+					if blockRecieved == false {
+		|				blockNumber = pack.Block.ID
+						blocks = append(blocks, pack.Block.TransactionID[:]...)
+						blockRecieved = true
 					} else {
-						time.Sleep(time.Second)
+						if blockNumber == pack.Block.ID {
+							blockNumber = blockNumber + 1
+							for {
+								blocks = append(blocks, pack.Block.TransactionID[:]...)
+							}
+						} else {
+							time.Sleep(time.Second)
+						}
 					}
 				}
-			}
-		}*/
+			}*/
 	if pack.Circle != nil {
 		circle = pack.Circle                                                           //Circle is updated
 		circle.Announce(myAddr, myID, string(x509.MarshalPKCS1PublicKey(myPublicKey))) //Announces presence to all other peers
