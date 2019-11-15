@@ -119,8 +119,9 @@ func checkDraw(draw []byte) bool {
 	return true
 }
 
-func calcSlot(start time.Time) int64 {
-	return (time.Since(start)).Nanoseconds() / 1e+10 //10 seconds per slot
+func calcSlot(start time.Time) int {
+	seconds := int(time.Since(start) / time.Second)
+	return seconds / 10 //10 seconds per slot
 }
 
 func broadcast(pack *Package) {
@@ -175,6 +176,22 @@ func interpret(pack *Package) {
 		sequencer.PublicKey = pack.Sequencer.PublicKey
 	}
 	if pack.Block.Signature != "" {
+		if pack.Block.Slot <= calcSlot(GenesisBlock.StartTime) {
+			var pubKey, _ = x509.ParsePKCS1PublicKey([]byte(pack.Block.Key))
+			signedVal := "LOTTERY" + GenesisBlock.Seed + strconv.Itoa(pack.Block.Slot) //TODO: injective encode
+			var hashedVal = sha256.Sum256([]byte(signedVal))
+			err := rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashedVal[:], []byte(pack.Block.Signature))
+			if err != nil {
+				fmt.Println("error verifying block:")
+				fmt.Println(err)
+			} else {
+				//handle block
+			}
+
+		}
+	}
+
+	/*
 		if blockVerify(*pack) == true {
 			if blockRecieved == false {
 				blockNumber = pack.Block.ID
@@ -191,7 +208,7 @@ func interpret(pack *Package) {
 				}
 			}
 		}
-	}
+	}*/
 	if pack.Circle != nil {
 		circle = pack.Circle                                                           //Circle is updated
 		circle.Announce(myAddr, myID, string(x509.MarshalPKCS1PublicKey(myPublicKey))) //Announces presence to all other peers
