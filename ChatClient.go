@@ -67,18 +67,37 @@ type Block struct {
 
 type GenBlock struct {
 	Seed          string
-	Hardness      string
+	Hardness      int
 	initialLedger Ledger
+}
+
+type BlockTree struct {
+	transactions []string
+	GB           GenBlock
+	blockMap     *map[string]Block
+	Queue        []Block
 }
 
 var GenesisBlock = GenBlock{
 	Seed:          "RandomSeed",
-	Hardness:      "VeryHard",
+	Hardness:      42,
 	initialLedger: generateInitialLedger(),
 }
 
-func generateInitialLedger() Ledger {
+var BT = BlockTree{
+	transactions: nil,
+	GB:           GenesisBlock,
+	blockMap:     new(map[string]Block),
+	Queue:        nil,
+}
 
+func generateInitialLedger() Ledger {
+	var ledger Ledger
+	for i := 0; i < 10; i++ {
+		var privatekey, _ = rsa.GenerateKey(rand.Reader, 3000)
+		ledger.Accounts[string(x509.MarshalPKCS1PublicKey(&privatekey.PublicKey))] = 10 ^ 6
+	}
+	return ledger
 }
 
 func broadcast(pack *Package) {
