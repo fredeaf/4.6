@@ -40,7 +40,7 @@ var processingTransactions []SignedTransaction
 var amount int
 var blockRecieved bool
 var blockNumber int
-var slotLength = 1
+var slotLength = 1 //in seconds
 
 type Sequencer struct {
 	IP        string
@@ -59,9 +59,9 @@ signature (injective encoded(json))
 type Block struct {
 	Slot            int
 	TransactionList []string
-	Draw            string
+	Draw            []byte
 	Key             string
-	Predecessor     crypto.Hash
+	Predecessor     [32]byte
 	Signature       string
 }
 
@@ -75,7 +75,7 @@ type GenBlock struct {
 type BlockTree struct {
 	transactions []string
 	GB           GenBlock
-	blockMap     *map[string]Block
+	blockMap     map[string]Block
 	Queue        []Block
 }
 
@@ -89,7 +89,7 @@ var GenesisBlock = GenBlock{
 var BT = BlockTree{
 	transactions: nil,
 	GB:           GenesisBlock,
-	blockMap:     new(map[string]Block),
+	blockMap:     make(map[string]Block),
 	Queue:        nil,
 }
 
@@ -122,7 +122,43 @@ func checkDraw(draw []byte) bool {
 
 func calcSlot(start time.Time) int {
 	seconds := int(time.Since(start) / time.Second)
-	return seconds / slotLength //10 seconds per slot
+	return seconds / slotLength
+}
+
+func getLongestChainRef() string {
+	var bestLength = 0
+	var ref = ""
+	for a, block := range BT.blockMap {
+		if block.Slot > bestLength {
+			ref = a
+		}
+	}
+	return ref
+}
+
+func createNewBlock() {
+	var block Block
+	block.Slot = calcSlot(GenesisBlock.StartTime)
+	if len(BT.blockMap) == 0 {
+		block.Predecessor = sha256.Sum256([]byte(GenesisBlock.Seed))
+	} else {
+		block.Predecessor = sha256.Sum256([]byte(getLongestChainRef()))
+	}
+	block.TransactionList = nil //TODO: create transactionList
+	block.Draw = draw(block.Slot)
+	block.Key = string(x509.MarshalPKCS1PublicKey(myPublicKey))
+	signedVal := strconv.Itoa(block.Slot) + string(block.Draw) + block.Key //TODO: injective encode with transactionList and predecessor added
+	hashedVal := sha256.Sum256([]byte(signedVal))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, myPrivateKey, crypto.SHA256, hashedVal[:])
+	if err != nil {
+		fmt.Println("error signing new block:")
+		fmt.Println(err)
+	}
+	block.Signature = string(sig)
+	if checkDraw(block.Draw) {
+		BT.blockMap[block.Signature] = block
+		//TODO: send valid block
+	}
 }
 
 func broadcast(pack *Package) {
