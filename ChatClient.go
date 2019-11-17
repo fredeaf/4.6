@@ -41,6 +41,8 @@ var amount int
 var blockRecieved bool
 var blockNumber int
 var slotLength = 1 //in seconds
+var transactionMap map[string]SignedTransaction
+var transactionRefList []string //TODO: add ref's for transactions since last final block
 
 type Sequencer struct {
 	IP        string
@@ -144,7 +146,7 @@ func createNewBlock() {
 	} else {
 		block.Predecessor = getLongestChainRef()
 	}
-	block.TransactionList = nil //TODO: create transactionList
+	block.TransactionList = transactionRefList //TODO: create transactionRefList
 	block.Draw = draw(block.Slot)
 	block.Key = string(x509.MarshalPKCS1PublicKey(myPublicKey))
 	signedVal := strconv.Itoa(block.Slot) + string(block.Draw) + block.Key //TODO: injective encode with transactionList and predecessor added
@@ -190,6 +192,21 @@ func handleConnection(conn net.Conn) {
 }
 
 func checkTransList(transactions []string) bool {
+	for _, transRef := range transactions {
+		foundValid := false
+		for ref, transaction := range transactionMap {
+			if ref == transRef && checkTransaction(transaction) {
+				foundValid = true
+			}
+		}
+		if !foundValid {
+			return false
+		}
+	}
+	return true
+}
+
+func checkTransaction(transaction SignedTransaction) bool {
 	//TODO:check transactions, return false if not valid
 	return true
 }
@@ -227,12 +244,11 @@ func interpret(pack *Package) {
 				fmt.Println("error verifying block:")
 				fmt.Println(err)
 			} else {
-				if checkDraw([]byte(pack.Block.Draw)) {
+				if checkDraw(pack.Block.Draw) {
 					//handle block
 					if len(pack.Block.TransactionList) > 0 {
 						if checkTransList(pack.Block.TransactionList) {
-							GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10 +
-								len(pack.Block.TransactionList)
+							GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10 + len(pack.Block.TransactionList)
 							//add block to tree ?
 						}
 					} else {
