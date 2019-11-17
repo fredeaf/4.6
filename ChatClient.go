@@ -75,7 +75,7 @@ type GenBlock struct {
 type BlockTree struct {
 	transactions []string
 	GB           GenBlock
-	blockMap     map[string]Block
+	blockMap     map[[32]byte]Block
 	Queue        []Block
 }
 
@@ -89,7 +89,7 @@ var GenesisBlock = GenBlock{
 var BT = BlockTree{
 	transactions: nil,
 	GB:           GenesisBlock,
-	blockMap:     make(map[string]Block),
+	blockMap:     make(map[[32]byte]Block),
 	Queue:        nil,
 }
 
@@ -125,9 +125,9 @@ func calcSlot(start time.Time) int {
 	return seconds / slotLength
 }
 
-func getLongestChainRef() string {
+func getLongestChainRef() [32]byte {
 	var bestLength = 0
-	var ref = ""
+	var ref [32]byte
 	for a, block := range BT.blockMap {
 		if block.Slot > bestLength {
 			ref = a
@@ -142,7 +142,7 @@ func createNewBlock() {
 	if len(BT.blockMap) == 0 {
 		block.Predecessor = sha256.Sum256([]byte(GenesisBlock.Seed))
 	} else {
-		block.Predecessor = sha256.Sum256([]byte(getLongestChainRef()))
+		block.Predecessor = getLongestChainRef()
 	}
 	block.TransactionList = nil //TODO: create transactionList
 	block.Draw = draw(block.Slot)
@@ -156,7 +156,7 @@ func createNewBlock() {
 	}
 	block.Signature = string(sig)
 	if checkDraw(block.Draw) {
-		BT.blockMap[block.Signature] = block
+		BT.blockMap[hashedVal] = block
 		//TODO: send valid block
 	}
 }
