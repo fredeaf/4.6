@@ -49,22 +49,13 @@ type Sequencer struct {
 	PublicKey string
 }
 
-/*Block skal indenholde:
-slot
-TransactionList
-Draw: Sign(LOTTERY,seed,slot)
-VK/PK key fra vinder
-predecessor: Hash
-signature (injective encoded(json))
-*/
-
 type Block struct {
-	Slot            int
-	TransactionList []string
-	Draw            []byte
-	Key             string
-	Predecessor     [32]byte
-	Signature       string
+	Slot               int
+	TransactionRefList []string
+	Draw               []byte
+	Key                string
+	Predecessor        [32]byte
+	Signature          string
 }
 
 type GenBlock struct {
@@ -83,9 +74,9 @@ type BlockTree struct {
 
 var GenesisBlock = GenBlock{
 	Seed:          "RandomSeed",
-	Hardness:      42,
+	Hardness:      42, //TODO: find proper hardness
 	initialLedger: generateInitialLedger(),
-	StartTime:     time.Now(), //TODO: set time??
+	StartTime:     time.Now(),
 }
 
 var BT = BlockTree{
@@ -146,7 +137,7 @@ func createNewBlock() {
 	} else {
 		block.Predecessor = getLongestChainRef()
 	}
-	block.TransactionList = transactionRefList //TODO: create transactionRefList
+	block.TransactionRefList = transactionRefList //TODO: create transactionRefList
 	block.Draw = draw(block.Slot)
 	block.Key = string(x509.MarshalPKCS1PublicKey(myPublicKey))
 	signedVal := strconv.Itoa(block.Slot) + string(block.Draw) + block.Key //TODO: injective encode with transactionList and predecessor added
@@ -211,6 +202,18 @@ func checkTransaction(transaction SignedTransaction) bool {
 	return true
 }
 
+/*
+func checkForFinalBlock(){
+	finalBlockRef := ""
+	for _,block := range BT.Queue{
+		//TODO:check if a final block can be found, and apply all previous transactions and blocks if true
+		finalBlockRef =
+	}
+
+	if finalBlockRef!=
+
+}
+*/
 //Interpret : function for checking the contents of received packages
 func interpret(pack *Package) {
 	if pack.Transaction != nil {
@@ -235,7 +238,7 @@ func interpret(pack *Package) {
 		sequencer.PublicKey = pack.Sequencer.PublicKey
 	}
 	if pack.Block.Signature != "" {
-		if pack.Block.Slot <= calcSlot(GenesisBlock.StartTime) {
+		if pack.Block.Slot <= calcSlot(GenesisBlock.StartTime) { //Block isn't from the future
 			var pubKey, _ = x509.ParsePKCS1PublicKey([]byte(pack.Block.Key))
 			signedVal := "LOTTERY" + GenesisBlock.Seed + strconv.Itoa(pack.Block.Slot) //TODO: injective encode
 			var hashedVal = sha256.Sum256([]byte(signedVal))
@@ -246,10 +249,11 @@ func interpret(pack *Package) {
 			} else {
 				if checkDraw(pack.Block.Draw) {
 					//handle block
-					if len(pack.Block.TransactionList) > 0 {
-						if checkTransList(pack.Block.TransactionList) {
-							GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10 + len(pack.Block.TransactionList)
-							//add block to tree ?
+					if len(pack.Block.TransactionRefList) > 0 {
+						if checkTransList(pack.Block.TransactionRefList) {
+							GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10 + len(pack.Block.TransactionRefList)
+							BT.Queue = append(BT.Queue, pack.Block)
+							checkForFinalBlock()
 						}
 					} else {
 						GenesisBlock.initialLedger.Accounts[pack.Block.Key] += 10
