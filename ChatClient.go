@@ -130,27 +130,33 @@ func getLongestChainRef() [32]byte {
 }
 
 func createNewBlock() {
-	var block Block
-	block.Slot = calcSlot(GenesisBlock.StartTime)
-	if len(BT.blockMap) == 0 {
-		block.Predecessor = sha256.Sum256([]byte(GenesisBlock.Seed))
-	} else {
-		block.Predecessor = getLongestChainRef()
-	}
-	block.TransactionRefList = transactionRefList //TODO: create transactionRefList
-	block.Draw = draw(block.Slot)
-	block.Key = string(x509.MarshalPKCS1PublicKey(myPublicKey))
-	signedVal := strconv.Itoa(block.Slot) + string(block.Draw) + block.Key //TODO: injective encode with transactionList and predecessor added
-	hashedVal := sha256.Sum256([]byte(signedVal))
-	sig, err := rsa.SignPKCS1v15(rand.Reader, myPrivateKey, crypto.SHA256, hashedVal[:])
-	if err != nil {
-		fmt.Println("error signing new block:")
-		fmt.Println(err)
-	}
-	block.Signature = string(sig)
-	if checkDraw(block.Draw) {
-		BT.blockMap[hashedVal] = block
-		//TODO: send valid block
+	slot := 0
+	for {
+		if slot != calcSlot(GenesisBlock.StartTime) {
+			slot = calcSlot(GenesisBlock.StartTime)
+			var block Block
+			block.Slot = calcSlot(GenesisBlock.StartTime)
+			if len(BT.blockMap) == 0 {
+				block.Predecessor = sha256.Sum256([]byte(GenesisBlock.Seed))
+			} else {
+				block.Predecessor = getLongestChainRef()
+			}
+			block.TransactionRefList = transactionRefList //TODO: create transactionRefList
+			block.Draw = draw(block.Slot)
+			block.Key = string(x509.MarshalPKCS1PublicKey(myPublicKey))
+			signedVal := strconv.Itoa(block.Slot) + string(block.Draw) + block.Key //TODO: injective encode with transactionList and predecessor added
+			hashedVal := sha256.Sum256([]byte(signedVal))
+			sig, err := rsa.SignPKCS1v15(rand.Reader, myPrivateKey, crypto.SHA256, hashedVal[:])
+			if err != nil {
+				fmt.Println("error signing new block:")
+				fmt.Println(err)
+			}
+			block.Signature = string(sig)
+			if checkDraw(block.Draw) {
+				BT.blockMap[hashedVal] = block
+				broadcast(packBlock(&block))
+			}
+		}
 	}
 }
 
@@ -469,12 +475,14 @@ func main() {
 			fmt.Println("Encode joinReq error:")
 			fmt.Println(err)
 		}
+		go createNewBlock()
 		takeInputFromUser()
 	} else {
 		//address not responding
 		fmt.Println("no response, starting new network")
 		keyStore.AddKey(myID, string(x509.MarshalPKCS1PublicKey(myPublicKey)))
 		go listenForConnections(ln)
+		go createNewBlock()
 		takeInputFromUser()
 	}
 

@@ -25,3 +25,9 @@ func packSequencer(sequencer *Sequencer) *Package {
 	pack.Sequencer = *sequencer
 	return pack
 }
+
+func packBlock(block *Block) *Package {
+	pack := new(Package)
+	pack.Block = *block
+	return pack
+}
